@@ -9,11 +9,14 @@ import torch
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 import time
+from copy import deepcopy
 
 import sys
-#sys.path.append(os.getcwd() + "/examples/examples_laplace/Laplace")
-#from laplace_local.laplace_local import Laplace 
-from laplace import Laplace
+from torch import nn
+sys.path.append("../Laplace")
+from laplace.laplace import Laplace 
+from laplace.subnetmask import ParamNameSubnetMask, ModuleNameSubnetMask
+#from laplace import Laplace
 from data import get_data, generate_latent_grid
 from ae_models import get_encoder, get_decoder
 
@@ -31,7 +34,7 @@ def load_laplace(filepath):
     return la
 
 
-def test_lae(dataset, batch_size=1, use_var_decoder=False):
+def test_lae(dataset, batch_size=1, use_var_decoder=False, use_la_enc=False):
 
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -138,19 +141,9 @@ def test_lae(dataset, batch_size=1, use_var_decoder=False):
             plt.close(); plt.cla()
 
 
-def train_lae(dataset="mnist", n_epochs=50, batch_size=32, use_var_decoder=False):
+def fit_laplace_to_decoder(encoder, decoder, dataset, batch_size):            
 
-    # initialize_model
-    latent_size = 2
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    encoder = get_encoder(dataset, latent_size).eval().to(device)
-    decoder = get_decoder(dataset, latent_size).eval().to(device)
-
-    # load model weights
-    path = f"../weights/{dataset}/ae_[use_var_dec={use_var_decoder}]"
-    encoder.load_state_dict(torch.load(f"{path}/encoder.pth"))
-    decoder.load_state_dict(torch.load(f"{path}/mu_decoder.pth"))
-
     train_loader, val_loader = get_data(dataset, batch_size)
     
     # create dataset
@@ -182,10 +175,77 @@ def train_lae(dataset="mnist", n_epochs=50, batch_size=32, use_var_decoder=False
     #    hyper_optimizer.step()
 
     # save weights
+    import pdb; pdb.set_trace()
     path = f"../weights/{dataset}/lae_[use_var_dec={use_var_decoder}]"
     if not os.path.isdir(path): os.makedirs(path)
     save_laplace(la, f"{path}/decoder.pkl")
 
+
+def fit_laplace_to_enc_and_dec(encoder, decoder, dataset, batch_size):            
+
+    train_loader, val_loader = get_data("mnist_ae", batch_size)
+    
+    # gather encoder and decoder into one model:
+    class AE(nn.Module):
+        def __init__(self, enc, dec):
+            super(AE, self).__init__()
+            self.encoder = deepcopy(enc.encoder)
+            self.decoder = deepcopy(dec.decoder)
+
+        def forward(self, x):
+            x = x.view(x.size(0), -1)
+            x = self.encoder(x)
+            x = self.decoder(x)
+            return x
+
+    net = AE(encoder, decoder)
+    
+    # subnetwork Laplace where we specify subnetwork by module names
+    la = Laplace(
+        net, 
+        'regression', 
+        subset_of_weights='subnetwork', 
+        subnetwork_mask=ModuleNameSubnetMask, 
+        hessian_structure='full', 
+        subnetmask_kwargs=dict(module_names=['decoder.0'])
+    )
+
+    # Fitting
+    la.fit(train_loader)
+
+    # la.optimize_prior_precision()
+    # log_prior, log_sigma = torch.ones(1, requires_grad=True, device=device), torch.ones(1, requires_grad=True, device=device)
+    # hyper_optimizer = torch.optim.Adam([log_prior, log_sigma], lr=1e-2)
+    # for i in range(n_epochs):
+    #    hyper_optimizer.zero_grad()
+    #    neg_marglik = - la.log_marginal_likelihood(log_prior.exp(), log_sigma.exp())
+    #    neg_marglik.backward()
+    #    hyper_optimizer.step()
+    import pdb; pdb.set_trace()
+    # save weights
+    path = f"../weights/{dataset}/lae_[use_var_dec={use_var_decoder}]_[use_la_enc=True]"
+    if not os.path.isdir(path): os.makedirs(path)
+    save_laplace(la, f"{path}/ae.pkl")
+
+
+def train_lae(dataset="mnist", n_epochs=50, batch_size=32, use_var_decoder=False, use_la_encoder=False):
+
+    # initialize_model
+    latent_size = 2
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    encoder = get_encoder(dataset, latent_size).eval().to(device)
+    decoder = get_decoder(dataset, latent_size).eval().to(device)
+
+    # load model weights
+    path = f"../weights/{dataset}/ae_[use_var_dec={use_var_decoder}]"
+    encoder.load_state_dict(torch.load(f"{path}/encoder.pth"))
+    decoder.load_state_dict(torch.load(f"{path}/mu_decoder.pth"))
+
+    if use_la_encoder:
+        fit_laplace_to_enc_and_dec(encoder, decoder, dataset, batch_size)
+    else:
+        fit_laplace_to_decoder(encoder, decoder, dataset, batch_size)
+    
 
 if __name__ == "__main__":
 
@@ -193,6 +253,7 @@ if __name__ == "__main__":
     dataset = "mnist"
     batch_size = 128
     use_var_decoder = False
+    use_la_encoder = True
 
     # train or load laplace auto encoder
     if train:
@@ -201,6 +262,7 @@ if __name__ == "__main__":
             dataset=dataset, 
             batch_size=batch_size,
             use_var_decoder=use_var_decoder,
+            use_la_encoder=use_la_encoder,
         )
 
     # evaluate laplace auto encoder
@@ -209,5 +271,6 @@ if __name__ == "__main__":
         dataset, 
         batch_size,
         use_var_decoder,
+        use_la_encoder,
     )
     

@@ -1,4 +1,7 @@
+from ast import Break
+from builtins import breakpoint
 import os
+from pyexpat import model
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,10 +18,11 @@ import sys
 from torch import nn
 sys.path.append("../Laplace")
 from laplace.laplace import Laplace 
-from laplace.subnetmask import ParamNameSubnetMask, ModuleNameSubnetMask
+from laplace.utils import ModuleNameSubnetMask
 #from laplace import Laplace
 from data import get_data, generate_latent_grid
 from ae_models import get_encoder, get_decoder
+from laplace.curvature import BackPackGGN, BackPackEF, AsdlGGN, AsdlEF
 
 import dill
 
@@ -34,7 +38,7 @@ def load_laplace(filepath):
     return la
 
 
-def test_lae(dataset, batch_size=1, use_var_decoder=False, use_la_enc=False):
+def test_lae_decoder(dataset, batch_size=1, use_var_decoder=False):    
 
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -141,6 +145,119 @@ def test_lae(dataset, batch_size=1, use_var_decoder=False, use_la_enc=False):
             plt.close(); plt.cla()
 
 
+def test_lae_encoder_decoder(dataset, batch_size=1, use_var_decoder=False):    
+
+    # initialize_model
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    path = f"{dataset}/lae_[use_var_dec={use_var_decoder}]_[use_la_enc=True]"
+
+    la = load_laplace(f"../weights/{path}/ae.pkl")
+
+    train_loader, val_loader = get_data(dataset, batch_size)
+
+    pred_type =  "nn"
+
+    # forward eval la
+    x, z_mu, z_sigma, labels, mu_rec, sigma_rec = [], [], [], [], [], []
+    for i, (X, y) in tqdm(enumerate(val_loader)):
+        t0 = time.time()
+        with torch.no_grad():
+            
+            X = X.view(X.size(0), -1).to(device)
+            # z = encoder(X)
+            mu, var, mu_latent, var_latent = la(X, pred_type = pred_type)
+
+            mu_rec += [mu]
+            sigma_rec += [var.sqrt()]
+
+            x += [X]
+            labels += [y]
+            z_mu += [mu_latent]
+            z_sigma += [var_latent.sqrt()]
+
+        # only show the first 50 points
+        # if i > 50:
+        #    break
+    
+    x = torch.cat(x, dim=0).cpu().numpy()
+    labels = torch.cat(labels, dim=0).numpy()
+    z_mu = torch.cat(z_mu, dim=0).cpu().numpy()
+    z_sigma = torch.cat(z_sigma, dim=0).cpu().numpy()
+    mu_rec = torch.cat(mu_rec, dim=0).cpu().numpy()
+    sigma_rec = torch.cat(sigma_rec, dim=0).cpu().numpy()
+
+
+    n_points_axis = 50
+    xg_mesh, yg_mesh, z_grid_loader = generate_latent_grid(
+        z_mu[:, 0].min(),
+        z_mu[:, 0].max(),
+        z_mu[:, 1].min(),
+        z_mu[:, 1].max(),
+        n_points_axis
+    )
+    
+    all_f_mu, all_f_sigma = [], []
+    for z_grid in tqdm(z_grid_loader):
+        
+        z_grid = z_grid[0].to(device)
+
+        with torch.inference_mode():
+            mu_rec_grid, sigma_rec_grid, _z_grid, _z_grid_var = la.sample_from_decoder_only(z_grid)
+
+            # small check to enture that everythings is okay.
+            assert torch.all(torch.isclose(_z_grid, z_grid))
+            assert torch.all(_z_grid_var == 0)
+            
+        all_f_mu += [mu_rec_grid.cpu()]
+        all_f_sigma += [sigma_rec_grid.cpu()]
+
+    f_mu = torch.cat(all_f_mu, dim=0)
+    f_sigma = torch.cat(all_f_sigma, dim=0)
+
+    # get diagonal elements
+    sigma_vector = f_sigma.mean(axis=1)
+
+    # create figures
+    if not os.path.isdir(f"../figures/{path}"): os.makedirs(f"../figures/{path}")
+
+    plt.figure()
+    if dataset == "mnist":
+        for yi in np.unique(labels):
+            idx = labels == yi
+            plt.plot(z_mu[idx, 0], z_mu[idx, 1], 'x', ms=5.0, alpha=1.0)
+    else:
+        plt.plot(z_mu[:, 0], z_mu[:, 1], 'x', ms=5.0, alpha=1.0)
+
+    precision_grid = np.reshape(sigma_vector, (n_points_axis, n_points_axis))
+    plt.contourf(xg_mesh, yg_mesh, precision_grid, cmap='viridis_r')
+    plt.colorbar()
+
+    plt.savefig(f"../figures/{path}/lae_contour.png")
+    plt.close(); plt.cla()
+
+    if dataset == "mnist":
+        for i in range(min(len(z_mu), 10)):
+            plt.figure()
+            plt.subplot(1,3,1)
+            plt.imshow(x[i].reshape(28,28))
+
+            plt.subplot(1,3,2)
+            plt.imshow(mu_rec[i].reshape(28,28))
+
+            plt.subplot(1,3,3)
+            plt.imshow(sigma_rec[i].reshape(28,28))
+
+            plt.savefig(f"../figures/{path}/lae_recon_{i}.png")
+            plt.close(); plt.cla()
+ 
+def test_lae(dataset, batch_size=1, use_var_decoder=False, use_la_enc=False):
+
+    if use_la_enc:
+        test_lae_encoder_decoder(dataset, batch_size, use_var_decoder)
+    else:
+        test_lae_decoder(dataset, batch_size, use_var_decoder)
+
+
 def fit_laplace_to_decoder(encoder, decoder, dataset, batch_size):            
 
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -166,17 +283,9 @@ def fit_laplace_to_decoder(encoder, decoder, dataset, batch_size):
     la.fit(z_loader)
 
     la.optimize_prior_precision()
-    # log_prior, log_sigma = torch.ones(1, requires_grad=True, device=device), torch.ones(1, requires_grad=True, device=device)
-    # hyper_optimizer = torch.optim.Adam([log_prior, log_sigma], lr=1e-2)
-    # for i in range(n_epochs):
-    #    hyper_optimizer.zero_grad()
-    #    neg_marglik = - la.log_marginal_likelihood(log_prior.exp(), log_sigma.exp())
-    #    neg_marglik.backward()
-    #    hyper_optimizer.step()
 
     # save weights
-    import pdb; pdb.set_trace()
-    path = f"../weights/{dataset}/lae_[use_var_dec={use_var_decoder}]"
+    path = f"../weights/{dataset}/lae_[use_var_dec={use_var_decoder}]]"
     if not os.path.isdir(path): os.makedirs(path)
     save_laplace(la, f"{path}/decoder.pkl")
 
@@ -186,42 +295,29 @@ def fit_laplace_to_enc_and_dec(encoder, decoder, dataset, batch_size):
     train_loader, val_loader = get_data("mnist_ae", batch_size)
     
     # gather encoder and decoder into one model:
-    class AE(nn.Module):
-        def __init__(self, enc, dec):
-            super(AE, self).__init__()
-            self.encoder = deepcopy(enc.encoder)
-            self.decoder = deepcopy(dec.decoder)
+    def get_model(encoder, decoder):
 
-        def forward(self, x):
-            x = x.view(x.size(0), -1)
-            x = self.encoder(x)
-            x = self.decoder(x)
-            return x
+        net = encoder.encoder._modules
+        decoder = decoder.decoder._modules
+        max_ = max([int(i) for i in net.keys()])
+        for i in decoder.keys():
+            net.update({f"{max_+int(i) + 1}" : decoder[i]}) 
 
-    net = AE(encoder, decoder)
+        return nn.Sequential(net)
+
+    net = get_model(encoder, decoder)
+    print(net)
     
     # subnetwork Laplace where we specify subnetwork by module names
     la = Laplace(
         net, 
         'regression', 
-        subset_of_weights='subnetwork', 
-        subnetwork_mask=ModuleNameSubnetMask, 
-        hessian_structure='full', 
-        subnetmask_kwargs=dict(module_names=['decoder.0'])
+        hessian_structure='diag', 
     )
 
     # Fitting
     la.fit(train_loader)
 
-    # la.optimize_prior_precision()
-    # log_prior, log_sigma = torch.ones(1, requires_grad=True, device=device), torch.ones(1, requires_grad=True, device=device)
-    # hyper_optimizer = torch.optim.Adam([log_prior, log_sigma], lr=1e-2)
-    # for i in range(n_epochs):
-    #    hyper_optimizer.zero_grad()
-    #    neg_marglik = - la.log_marginal_likelihood(log_prior.exp(), log_sigma.exp())
-    #    neg_marglik.backward()
-    #    hyper_optimizer.step()
-    import pdb; pdb.set_trace()
     # save weights
     path = f"../weights/{dataset}/lae_[use_var_dec={use_var_decoder}]_[use_la_enc=True]"
     if not os.path.isdir(path): os.makedirs(path)
@@ -249,7 +345,7 @@ def train_lae(dataset="mnist", n_epochs=50, batch_size=32, use_var_decoder=False
 
 if __name__ == "__main__":
 
-    train = True
+    train = False
     dataset = "mnist"
     batch_size = 128
     use_var_decoder = False

@@ -2,6 +2,24 @@
 
 Code for Laplace Auto-Encoding Bayes and the associate baseline methods.
 
+## Setup
+
+```
+git clone https://github.com/AlexImmer/Laplace;
+cd Laplace;
+git checkout subnetlaplace;
+```
+This should give you a folder structure like this:
+
+```
+* Laplace
+* src
+   * ae_models.py
+   * ...
+```
+
+## Train & Test
+
 To train and test a VAE on MNIST run:
 
 ```

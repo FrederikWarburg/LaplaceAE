@@ -96,7 +96,7 @@ class Encoder_mnist(nn.Module):
                 nn.Linear(512, 256),
                 nn.Dropout(p=self.p),
                 nn.Tanh(),
-                nn.Linear(256, latent_size)
+                nn.Linear(256, latent_size),
             )
         else:
             self.encoder = nn.Sequential(
@@ -104,7 +104,7 @@ class Encoder_mnist(nn.Module):
                 nn.Tanh(),
                 nn.Linear(512, 256),
                 nn.Tanh(),
-                nn.Linear(256, latent_size)
+                nn.Linear(256, latent_size),
             )
         
     def forward(self, x):

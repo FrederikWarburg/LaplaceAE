@@ -63,7 +63,7 @@ def test_lae_decoder(dataset, batch_size=1, use_var_decoder=False):
             X = X.view(X.size(0), -1).to(device)
             z = encoder(X)
             
-            mu, var = la(z, pred_type = pred_type)
+            mu, var = la(z, pred_type = pred_type, return_latent_representation=False)
 
             mu_rec += [mu.detach()]
             sigma_rec += [var.sqrt()]
@@ -98,7 +98,7 @@ def test_lae_decoder(dataset, batch_size=1, use_var_decoder=False):
         z_grid = z_grid[0].to(device)
 
         with torch.inference_mode():
-            f_mu, f_var = la(z_grid, pred_type = pred_type)
+            f_mu, f_var = la(z_grid, pred_type = pred_type, return_latent_representation=False)
 
         all_f_mu += [f_mu.cpu()]
         all_f_sigma += [f_var.sqrt().cpu()]
@@ -152,6 +152,10 @@ def test_lae_encoder_decoder(dataset, batch_size=1, use_var_decoder=False):
     path = f"{dataset}/lae_[use_var_dec={use_var_decoder}]_[use_la_enc=True]"
 
     la = load_laplace(f"../weights/{path}/ae.pkl")
+    
+    # path2 = f"{dataset}/lae_[use_var_dec={use_var_decoder}]"
+    # la2 = load_laplace(f"../weights/{path2}/decoder.pkl")
+    # la.H[-len(la2.H):] = la2.H
 
     train_loader, val_loader = get_data(dataset, batch_size)
 
@@ -165,11 +169,11 @@ def test_lae_encoder_decoder(dataset, batch_size=1, use_var_decoder=False):
             
             X = X.view(X.size(0), -1).to(device)
             # z = encoder(X)
-            mu, var, mu_latent, var_latent = la(X, pred_type = pred_type)
+            mu, var, mu_latent, var_latent = la(X, pred_type = pred_type, return_latent_representation=True)
 
             mu_rec += [mu]
             sigma_rec += [var.sqrt()]
-
+            
             x += [X]
             labels += [y]
             z_mu += [mu_latent]
@@ -186,7 +190,6 @@ def test_lae_encoder_decoder(dataset, batch_size=1, use_var_decoder=False):
     mu_rec = torch.cat(mu_rec, dim=0).cpu().numpy()
     sigma_rec = torch.cat(sigma_rec, dim=0).cpu().numpy()
 
-
     n_points_axis = 50
     xg_mesh, yg_mesh, z_grid_loader = generate_latent_grid(
         z_mu[:, 0].min(),
@@ -202,20 +205,26 @@ def test_lae_encoder_decoder(dataset, batch_size=1, use_var_decoder=False):
         z_grid = z_grid[0].to(device)
 
         with torch.inference_mode():
-            mu_rec_grid, sigma_rec_grid, _z_grid, _z_grid_var = la.sample_from_decoder_only(z_grid)
-
+            
+            mu_rec_grid, var_rec_grid, _z_grid, _z_grid_var = la.sample_from_decoder_only(z_grid)
             # small check to enture that everythings is okay.
+
+            # seems to be the same image always.
+            #  plt.imshow(mu_rec_grid.view(28,28).cpu()); plt.savefig("tmp1.png")
+            # breakpoint()
+            
             assert torch.all(torch.isclose(_z_grid, z_grid))
             assert torch.all(_z_grid_var == 0)
             
         all_f_mu += [mu_rec_grid.cpu()]
-        all_f_sigma += [sigma_rec_grid.cpu()]
+        all_f_sigma += [var_rec_grid.sqrt().cpu()]
 
     f_mu = torch.cat(all_f_mu, dim=0)
     f_sigma = torch.cat(all_f_sigma, dim=0)
 
     # get diagonal elements
-    sigma_vector = f_sigma.mean(axis=1)
+    idx = torch.arange(f_sigma.shape[1])
+    sigma_vector = f_sigma.mean(axis=1) if pred_type == "nn" else f_sigma[:, idx, idx].mean(axis=1)
 
     # create figures
     if not os.path.isdir(f"../figures/{path}"): os.makedirs(f"../figures/{path}")
@@ -277,15 +286,21 @@ def fit_laplace_to_decoder(encoder, decoder, dataset, batch_size):
     z_loader = DataLoader(TensorDataset(z, x), batch_size=batch_size, pin_memory=True)
 
     # Laplace Approximation
-    la = Laplace(decoder, 'regression', subset_of_weights='last_layer', hessian_structure='diag')
+    # la = Laplace(decoder, 'regression', subset_of_weights='last_layer', hessian_structure='diag')
+    la = Laplace(
+        decoder.decoder, 
+        'regression', 
+        hessian_structure='diag', 
+        subset_of_weights="all",
+    )
     
     # Fitting
     la.fit(z_loader)
 
     la.optimize_prior_precision()
-
+    
     # save weights
-    path = f"../weights/{dataset}/lae_[use_var_dec={use_var_decoder}]]"
+    path = f"../weights/{dataset}/lae_[use_var_dec={use_var_decoder}]"
     if not os.path.isdir(path): os.makedirs(path)
     save_laplace(la, f"{path}/decoder.pkl")
 
@@ -297,7 +312,7 @@ def fit_laplace_to_enc_and_dec(encoder, decoder, dataset, batch_size):
     # gather encoder and decoder into one model:
     def get_model(encoder, decoder):
 
-        net = encoder.encoder._modules
+        net = deepcopy(encoder.encoder._modules)
         decoder = decoder.decoder._modules
         max_ = max([int(i) for i in net.keys()])
         for i in decoder.keys():
@@ -313,11 +328,14 @@ def fit_laplace_to_enc_and_dec(encoder, decoder, dataset, batch_size):
         net, 
         'regression', 
         hessian_structure='diag', 
+        subset_of_weights="all",
     )
 
     # Fitting
     la.fit(train_loader)
 
+    la.optimize_prior_precision()
+    
     # save weights
     path = f"../weights/{dataset}/lae_[use_var_dec={use_var_decoder}]_[use_la_enc=True]"
     if not os.path.isdir(path): os.makedirs(path)

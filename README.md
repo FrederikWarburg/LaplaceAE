@@ -5,9 +5,7 @@ Code for Laplace Auto-Encoding Bayes and the associate baseline methods.
 ## Setup
 
 ```
-git clone https://github.com/AlexImmer/Laplace;
-cd Laplace;
-git checkout subnetlaplace;
+git clone https://github.com/FrederikWarburg/Laplace;
 ```
 This should give you a folder structure like this:
 
@@ -26,7 +24,21 @@ To train and test a VAE on MNIST run:
 cd src; CUDA_VISIBLE_DEVICES=0 python trainer_vae.py
 ```
 
-To train and test a LAE on MNIST run:
+To train AE  on MNIST run:
+
+```
+cd src; CUDA_VISIBLE_DEVICES=0 python trainer_ae.py
+```
+
+
+To train LAE  on MNIST run:
+
+```
+cd src; CUDA_VISIBLE_DEVICES=0 python trainer_lae.py
+```
+
+
+To train and test a AE and then LAE on MNIST run:
 
 ```
 cd src; CUDA_VISIBLE_DEVICES=0 python trainer_e2e.py

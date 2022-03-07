@@ -99,6 +99,13 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         
         self.net = get_model(encoder, decoder)
 
+        self.feature_maps = []
+        def fw_hook(module, input, output):
+            self.feature_maps.append(output.detach())
+        
+        for k in range(len(self.net)):
+            self.net[k].register_forward_hook(fw_hook)
+
         s = 1.0 
         self.h = s * torch.ones_like(parameters_to_vector(self.net.parameters())).to(device)
 
@@ -111,12 +118,49 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
         return optimizer
 
+    def compute_hessian(self, x, feature_maps, net, output_size):
+        
+        H = []
+        bs = x.shape[0]
+        feature_maps = [x] + feature_maps
+        tmp = torch.diag_embed(torch.ones(bs, output_size)).to(x.device)
+
+        with torch.no_grad():
+            for k in range(len(net) - 1, -1, -1):
+                if isinstance(net[k], torch.nn.Linear):
+                    diag_elements = torch.diagonal(tmp,dim1=1,dim2=2)
+                    feature_map_k2 = (feature_maps[k] ** 2).unsqueeze(1)
+
+                    h_k = torch.bmm(diag_elements.unsqueeze(2), feature_map_k2).view(bs, -1)
+
+                    # has a bias
+                    if self.net[k].bias is not None:
+                        h_k = torch.cat([h_k, diag_elements], dim=1)
+
+                    H = [h_k] + H
+
+                elif isinstance(net[k], torch.nn.Tanh):
+                    J_tanh = torch.diag_embed(torch.ones(feature_maps[k+1].shape).to(x.device) - feature_maps[k+1]**2)
+                    # TODO: make more efficent by using row vectors
+                    tmp = torch.einsum("bnm,bnj,bjk->bmk", J_tanh, tmp, J_tanh) 
+
+                if k == 0:                
+                    break
+
+                if isinstance(net[k], torch.nn.Linear):
+                    tmp = torch.einsum("nm,bnj,jk->bmk", net[k].weight, tmp, net[k].weight) 
+
+        H = torch.cat(H, dim = 1)
+                    
+        return H
+
     def training_step(self, train_batch, batch_idx):
         x, y = train_batch
         x = x.view(x.size(0), -1)
 
         # compute kl
         sigma_q = 1 / (self.h + 1e-6)
+        
         mu_q = parameters_to_vector(self.net.parameters())
         k = len(mu_q)
 
@@ -133,6 +177,8 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             # replace the network parameters with the sampled parameters
             vector_to_parameters(net_sample, self.net.parameters())
 
+            self.feature_maps = []
+
             # predict with the sampled weights
             x_rec = self.net(x.to(self._device))
 
@@ -140,11 +186,10 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             mse_s = F.mse_loss(x_rec, x)
 
             # compute hessian for sample net
-            J_s, _ = jacobians(x, self.net, self.output_size)
-            
-            h_s = torch.einsum('ndp,ndp->np', J_s, J_s)
-
-            J_s = J_s.detach()
+            h_s = self.compute_hessian(x, self.feature_maps, self.net, self.output_size)
+            # J_s, _ = jacobians(x, self.net, self.output_size)
+            # h_s = torch.einsum('ndp,ndp->np', J_s, J_s)
+            # J_s = J_s.detach()
 
             # append results
             mse.append(mse_s)

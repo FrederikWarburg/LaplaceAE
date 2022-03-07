@@ -14,14 +14,15 @@ from data import get_data, generate_latent_grid
 from ae_models import get_encoder, get_decoder
 from utils import softclip
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
-from asdfghjkl.gradient import batch_gradient
 from copy import deepcopy
+
 
 def sample(parameters, posterior_scale, n_samples=100):
     n_params = len(parameters)
     samples = torch.randn(n_samples, n_params, device="cuda:0")
     samples = samples * posterior_scale.reshape(1, n_params)
     return parameters.reshape(1, n_params) + samples
+
 
 def get_model(encoder, decoder):
 
@@ -34,54 +35,45 @@ def get_model(encoder, decoder):
     return nn.Sequential(net)
 
 
-def _flatten_after_batch(tensor: torch.Tensor):
-    if tensor.ndim == 1:
-        return tensor.unsqueeze(-1)
-    else:
-        return tensor.flatten(start_dim=1)
+def compute_hessian(x, feature_maps, net, output_size):
+        
+    H = []
+    bs = x.shape[0]
+    feature_maps = [x] + feature_maps
+    tmp = torch.diag_embed(torch.ones(bs, output_size)).to(x.device)
 
-def _get_batch_grad(model):
-    batch_grads = list()
-    for module in model.modules():
-        if hasattr(module, 'op_results'):
-            res = module.op_results['batch_grads']
-            if 'weight' in res:
-                batch_grads.append(_flatten_after_batch(res['weight']))
-            if 'bias' in res:
-                batch_grads.append(_flatten_after_batch(res['bias']))
-            if len(set(res.keys()) - {'weight', 'bias'}) > 0:
-                raise ValueError(f'Invalid parameter keys {res.keys()}')
-    return torch.cat(batch_grads, dim=1)
+    with torch.no_grad():
+        for k in range(len(net) - 1, -1, -1):
+            if isinstance(net[k], torch.nn.Linear):
+                diag_elements = torch.diagonal(tmp,dim1=1,dim2=2)
+                feature_map_k2 = (feature_maps[k] ** 2).unsqueeze(1)
 
+                h_k = torch.bmm(diag_elements.unsqueeze(2), feature_map_k2).view(bs, -1)
 
-def jacobians(x, model, output_size=784):
-    """Compute Jacobians \\(\\nabla_\\theta f(x;\\theta)\\) at current parameter \\(\\theta\\)
-    using asdfghjkl's gradient per output dimension.
+                # has a bias
+                if net[k].bias is not None:
+                    h_k = torch.cat([h_k, diag_elements], dim=1)
 
-    Parameters
-    ----------
-    x : torch.Tensor
-        input data `(batch, input_shape)` on compatible device with model.
+                H = [h_k] + H
 
-    Returns
-    -------
-    Js : torch.Tensor
-        Jacobians `(batch, parameters, outputs)`
-    f : torch.Tensor
-        output function `(batch, outputs)`
-    """
-    Js = list()
-    for i in range(output_size):
-        def loss_fn(outputs, targets):
-            return outputs[:, i].sum()
+            elif isinstance(net[k], torch.nn.Tanh):
+                J_tanh = torch.diag_embed(torch.ones(feature_maps[k+1].shape).to(x.device) - feature_maps[k+1]**2)
+                # TODO: make more efficent by using row vectors
+                tmp = torch.einsum("bnm,bnj,bjk->bmk", J_tanh, tmp, J_tanh) 
 
-        f = batch_gradient(model, loss_fn, x, None).detach()
-        Jk = _get_batch_grad(model)
+            if k == 0:                
+                break
 
-        Js.append(Jk)
-    Js = torch.stack(Js, dim=1)
+            if isinstance(net[k], torch.nn.Linear):
+                tmp = torch.einsum("nm,bnj,jk->bmk", net[k].weight, tmp, net[k].weight) 
 
-    return Js, f
+    H = torch.cat(H, dim = 1)
+    
+    # mean over batch size
+    H = torch.mean(H, dim = 0)
+                
+    return H
+
 
 class LitLaplaceAutoEncoder(pl.LightningModule):
     def __init__(self, dataset):
@@ -109,7 +101,6 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         s = 1.0 
         self.h = s * torch.ones_like(parameters_to_vector(self.net.parameters())).to(device)
 
-
     def forward(self, x):
         out = self.net(x)
         return out
@@ -117,42 +108,6 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
         return optimizer
-
-    def compute_hessian(self, x, feature_maps, net, output_size):
-        
-        H = []
-        bs = x.shape[0]
-        feature_maps = [x] + feature_maps
-        tmp = torch.diag_embed(torch.ones(bs, output_size)).to(x.device)
-
-        with torch.no_grad():
-            for k in range(len(net) - 1, -1, -1):
-                if isinstance(net[k], torch.nn.Linear):
-                    diag_elements = torch.diagonal(tmp,dim1=1,dim2=2)
-                    feature_map_k2 = (feature_maps[k] ** 2).unsqueeze(1)
-
-                    h_k = torch.bmm(diag_elements.unsqueeze(2), feature_map_k2).view(bs, -1)
-
-                    # has a bias
-                    if self.net[k].bias is not None:
-                        h_k = torch.cat([h_k, diag_elements], dim=1)
-
-                    H = [h_k] + H
-
-                elif isinstance(net[k], torch.nn.Tanh):
-                    J_tanh = torch.diag_embed(torch.ones(feature_maps[k+1].shape).to(x.device) - feature_maps[k+1]**2)
-                    # TODO: make more efficent by using row vectors
-                    tmp = torch.einsum("bnm,bnj,bjk->bmk", J_tanh, tmp, J_tanh) 
-
-                if k == 0:                
-                    break
-
-                if isinstance(net[k], torch.nn.Linear):
-                    tmp = torch.einsum("nm,bnj,jk->bmk", net[k].weight, tmp, net[k].weight) 
-
-        H = torch.cat(H, dim = 1)
-                    
-        return H
 
     def training_step(self, train_batch, batch_idx):
         x, y = train_batch
@@ -186,10 +141,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             mse_s = F.mse_loss(x_rec, x)
 
             # compute hessian for sample net
-            h_s = self.compute_hessian(x, self.feature_maps, self.net, self.output_size)
-            # J_s, _ = jacobians(x, self.net, self.output_size)
-            # h_s = torch.einsum('ndp,ndp->np', J_s, J_s)
-            # J_s = J_s.detach()
+            h_s = compute_hessian(x, self.feature_maps, self.net, self.output_size)
 
             # append results
             mse.append(mse_s)
@@ -329,7 +281,7 @@ def test_lae(dataset, batch_size=1):
 def train_lae(dataset = "mnist"):
 
     # data
-    train_loader, val_loader = get_data(dataset, batch_size=1)
+    train_loader, val_loader = get_data(dataset, batch_size=32)
 
     # model
     model = LitLaplaceAutoEncoder(dataset)

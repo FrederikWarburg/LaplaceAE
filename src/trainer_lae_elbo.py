@@ -82,6 +82,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         device = "cuda:0" if torch.cuda.is_available() else "cpu"  # hola frederik :) can you fix this shit?
 
         latent_size = 2
+        self.kl_weight = 1e-8
         self.output_size = 784
         encoder = get_encoder(dataset, latent_size)
         decoder = get_decoder(dataset, latent_size)
@@ -155,10 +156,10 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         vector_to_parameters(mu_q, self.net.parameters())
 
         mse = torch.stack(mse) if len(mse) > 1 else mse
-        loss = self.constant * mse.mean() + 1e-4 * kl.mean()
+        loss = self.constant * mse.mean() + self.kl_weight * kl.mean()
         self.log('train_loss', loss)
         self.log('mse_loss', mse.mean())
-        self.log('kl_loss', 1e-4 * kl.mean())
+        self.log('kl_loss', self.kl_weight * kl.mean())
 
         return loss
 
@@ -351,7 +352,7 @@ def train_lae(dataset = "mnist"):
 if __name__ == "__main__":
 
     dataset = "mnist"
-    train = False
+    train = True
 
     # train or load auto encoder
     if train:

@@ -92,11 +92,11 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         self.net = get_model(encoder, decoder)
 
         self.feature_maps = []
-        def fw_hook(module, input, output):
+        def fw_hook_get_latent(module, input, output):
             self.feature_maps.append(output.detach())
         
         for k in range(len(self.net)):
-            self.net[k].register_forward_hook(fw_hook)
+            self.net[k].register_forward_hook(fw_hook_get_latent)
 
         s = 1.0 
         self.h = s * torch.ones_like(parameters_to_vector(self.net.parameters())).to(device)
@@ -183,19 +183,24 @@ def test_lae(dataset, batch_size=1):
     decoder = get_decoder(dataset, latent_size)
 
     net = get_model(encoder, decoder).eval().to(device)
-    net.load_state_dict(torch.load(f"../weights/{path}/encoder.pth"))
+    net.load_state_dict(torch.load(f"../weights/{path}/net.pth"))
 
-    hessian = load_hessian()
+    h = torch.load(f"../weights/{path}/hessian.pth")
+    sigma_q = 1 / (h + 1e-6)
+    
+    # draw samples from the nn (sample nn)
+    mu_q = parameters_to_vector(net.parameters())
+    samples = sample(mu_q, sigma_q, n_samples=100)
 
     z_i = []
-    def fw_hook(module, input, output):
+    def fw_hook_get_latent(module, input, output):
         z_i.append(output.detach().cpu())    
-    net[4].register_forward_hook(fw_hook)
+    hook = net[4].register_forward_hook(fw_hook_get_latent)
 
     train_loader, val_loader = get_data(dataset, batch_size)
 
     # forward eval
-    x, z, x_rec_mu, x_rec_sigma, labels = [], [], [], [], []
+    x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = [], [], [], [], [], []
     for i, (xi, yi) in tqdm(enumerate(val_loader)):
         xi = xi.view(xi.size(0), -1).to(device)
         with torch.inference_mode():
@@ -203,22 +208,20 @@ def test_lae(dataset, batch_size=1):
             x_reci = []
             z_i = []
 
-            sigma_q = 1 / (hessian + 1e-6)
-            
-            # draw samples from the nn (sample nn)
-            mu_q = parameters_to_vector(net.parameters())
-            samples = sample(mu_q, sigma_q, n_samples=100)
             for net_sample in samples:
 
                 # replace the network parameters with the sampled parameters
                 vector_to_parameters(net_sample, net.parameters())
                 x_reci += [net(xi)]
 
+            x_reci = torch.cat(x_reci)
+            z_i = torch.cat(z_i)
+
             # average over network samples
-            x_reci_mu = torch.mean(x_reci)
-            x_reci_sigma = torch.var(x_reci).sqrt()
-            z_i_mu = torch.mean(z_i)
-            z_i_sigma = torch.var(z_i).sqrt()
+            x_reci_mu = torch.mean(x_reci, dim=0)
+            x_reci_sigma = torch.var(x_reci, dim=0).sqrt()
+            z_i_mu = torch.mean(z_i, dim=0)
+            z_i_sigma = torch.var(z_i, dim=0).sqrt()
 
             # append to list
             x_rec_mu += [x_reci_mu.cpu()]
@@ -230,53 +233,54 @@ def test_lae(dataset, batch_size=1):
     
     x = torch.cat(x, dim=0).numpy()
     labels = torch.cat(labels, dim=0).numpy()
-    z_mu = torch.cat(z_mu, dim=0).numpy()
-    z_sigma = torch.cat(z_sigma, dim=0).numpy()
-    x_rec_mu = torch.cat(x_rec_mu, dim=0).numpy()
-    x_rec_sigma = torch.cat(x_rec_sigma, dim=0).numpy()
+    z_mu = torch.stack(z_mu).numpy()
+    z_sigma = torch.stack(z_sigma).numpy()
+    x_rec_mu = torch.stack(x_rec_mu).numpy()
+    x_rec_sigma = torch.stack(x_rec_sigma).numpy()
 
+    # remove forward hook
+    hook.remove()
 
     # Grid for probability map
     n_points_axis = 50
     xg_mesh, yg_mesh, z_grid_loader = generate_latent_grid(
-        z[:, 0].min(),
-        z[:, 0].max(),
-        z[:, 1].min(),
-        z[:, 1].max(),
+        z_mu[:, 0].min(), z_mu[:, 0].max(),
+        z_mu[:, 1].min(), z_mu[:, 1].max(),
         n_points_axis
     )
 
     # the hook signature that just replaces the current 
     # feature map with the given point
-    z_grid = None
-    def fw_hook(module, input, output):
-        output = z_grid   
-        z.append(output.detach())
-    
-    net[4].register_forward_hook(fw_hook)
+    def modify_input(z_grid):
+        def hook(module, input):
+            input[0][:] = z_grid[0]
+        return hook
     
     all_f_mu, all_f_sigma = [], []
     for z_grid in tqdm(z_grid_loader):
         
         z_grid = z_grid[0].to(device)
+        replace_hook = net[5].register_forward_pre_hook(modify_input(z_grid))
 
         with torch.inference_mode():
-            samples = sample(mu_q, sigma_q, n_samples=100)
+
             rec_grid_i = []
             for net_sample in samples:
 
                 # replace the network parameters with the sampled parameters
                 vector_to_parameters(net_sample, net.parameters())
-                rec_grid_i = net(torch.ones(28*28).to(device))
+                rec_grid_i += [net(torch.ones(28*28).to(device))]
 
-            mu_rec_grid = torch.mean(rec_grid_i, dim=1)
-            sigma_rec_grid = torch.var(rec_grid_i, dim=1).sqrt()
+            rec_grid_i = torch.stack(rec_grid_i)
+
+            mu_rec_grid = torch.mean(rec_grid_i, dim=0)
+            sigma_rec_grid = torch.var(rec_grid_i, dim=0).sqrt()
 
         all_f_mu += [mu_rec_grid.cpu()]
         all_f_sigma += [sigma_rec_grid.cpu()]
 
-    f_mu = torch.cat(all_f_mu, dim=0)
-    f_sigma = torch.cat(all_f_sigma, dim=0)
+    f_mu = torch.stack(all_f_mu)
+    f_sigma = torch.stack(all_f_sigma)
 
     # get diagonal elements
     sigma_vector = f_sigma.mean(axis=1)
@@ -288,9 +292,9 @@ def test_lae(dataset, batch_size=1):
     if dataset == "mnist":
         for yi in np.unique(labels):
             idx = labels == yi
-            plt.plot(z[idx, 0], z[idx, 1], 'x', ms=5.0, alpha=1.0)
+            plt.plot(z_mu[idx, 0], z_mu[idx, 1], 'x', ms=5.0, alpha=1.0)
     else:
-        plt.plot(z[:, 0], z[:, 1], 'x', ms=5.0, alpha=1.0)
+        plt.plot(z_mu[:, 0], z_mu[:, 1], 'x', ms=5.0, alpha=1.0)
 
     precision_grid = np.reshape(sigma_vector, (n_points_axis, n_points_axis))
     plt.contourf(xg_mesh, yg_mesh, precision_grid, cmap='viridis_r')
@@ -300,9 +304,8 @@ def test_lae(dataset, batch_size=1):
     plt.close(); plt.cla()
 
     if dataset == "mnist":
-        for i in range(min(len(z), 10)):
+        for i in range(min(len(z_mu), 10)):
             nplots = 3
-
             plt.figure()
             plt.subplot(1,nplots,1)
             plt.imshow(x[i].reshape(28,28))
@@ -313,7 +316,7 @@ def test_lae(dataset, batch_size=1):
             plt.subplot(1,nplots,3)
             plt.imshow(x_rec_sigma[i].reshape(28,28))
 
-            plt.savefig(f"../figures/{path}/ae_recon_{i}.png")
+            plt.savefig(f"../figures/{path}/lae_elbo_recon_{i}.png")
             plt.close(); plt.cla()
 
 
@@ -348,7 +351,7 @@ def train_lae(dataset = "mnist"):
 if __name__ == "__main__":
 
     dataset = "mnist"
-    train = True
+    train = False
 
     # train or load auto encoder
     if train:

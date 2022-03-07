@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-
+from datetime import datetime
 from data import get_data, generate_latent_grid
 from ae_models import get_encoder, get_decoder
 from utils import softclip
@@ -155,8 +155,10 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         vector_to_parameters(mu_q, self.net.parameters())
 
         mse = torch.stack(mse) if len(mse) > 1 else mse
-        loss = self.constant * mse.mean() + kl.mean()
+        loss = self.constant * mse.mean() + 1e-4 * kl.mean()
         self.log('train_loss', loss)
+        self.log('mse_loss', mse.mean())
+        self.log('kl_loss', 1e-4 * kl.mean())
 
         return loss
 
@@ -174,14 +176,21 @@ def test_lae(dataset, batch_size=1):
 
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    path = f"{dataset}/lae"
+    path = f"{dataset}/lae_elbo"
 
     latent_size = 2
-    encoder = get_encoder(dataset, latent_size).eval().to(device)
-    encoder.load_state_dict(torch.load(f"../weights/{path}/encoder.pth"))
+    encoder = get_encoder(dataset, latent_size)
+    decoder = get_decoder(dataset, latent_size)
 
-    mu_decoder = get_decoder(dataset, latent_size).eval().to(device)
-    mu_decoder.load_state_dict(torch.load(f"../weights/{path}/mu_decoder.pth"))
+    net = get_model(encoder, decoder).eval().to(device)
+    net.load_state_dict(torch.load(f"../weights/{path}/encoder.pth"))
+
+    hessian = load_hessian()
+
+    z_i = []
+    def fw_hook(module, input, output):
+        z_i.append(output.detach().cpu())    
+    net[4].register_forward_hook(fw_hook)
 
     train_loader, val_loader = get_data(dataset, batch_size)
 
@@ -190,55 +199,87 @@ def test_lae(dataset, batch_size=1):
     for i, (xi, yi) in tqdm(enumerate(val_loader)):
         xi = xi.view(xi.size(0), -1).to(device)
         with torch.inference_mode():
-            zi = encoder(xi)
-            x_reci = mu_decoder(zi)
+            
+            x_reci = []
+            z_i = []
 
-            x += [xi.cpu()]
-            z += [zi.cpu()]
-            x_rec_mu += [x_reci.cpu()]
+            sigma_q = 1 / (hessian + 1e-6)
+            
+            # draw samples from the nn (sample nn)
+            mu_q = parameters_to_vector(net.parameters())
+            samples = sample(mu_q, sigma_q, n_samples=100)
+            for net_sample in samples:
+
+                # replace the network parameters with the sampled parameters
+                vector_to_parameters(net_sample, net.parameters())
+                x_reci += [net(xi)]
+
+            # average over network samples
+            x_reci_mu = torch.mean(x_reci)
+            x_reci_sigma = torch.var(x_reci).sqrt()
+            z_i_mu = torch.mean(z_i)
+            z_i_sigma = torch.var(z_i).sqrt()
+
+            # append to list
+            x_rec_mu += [x_reci_mu.cpu()]
+            x_rec_sigma += [x_reci_sigma.cpu()]
+            z_mu += [z_i_mu.cpu()]
+            z_sigma += [z_i_sigma.cpu()]
             labels += [yi]
-
-        # only show the first 50 points
-        # if i > 50:
-        #    break
+            x += [xi.cpu()]
     
     x = torch.cat(x, dim=0).numpy()
     labels = torch.cat(labels, dim=0).numpy()
-    z = torch.cat(z, dim=0).numpy()
+    z_mu = torch.cat(z_mu, dim=0).numpy()
+    z_sigma = torch.cat(z_sigma, dim=0).numpy()
     x_rec_mu = torch.cat(x_rec_mu, dim=0).numpy()
-    if use_var_decoder:
-        x_rec_sigma = torch.cat(x_rec_sigma, dim=0).numpy()
+    x_rec_sigma = torch.cat(x_rec_sigma, dim=0).numpy()
 
-    if use_var_decoder:
-        # Grid for probability map
-        n_points_axis = 50
-        xg_mesh, yg_mesh, z_grid_loader = generate_latent_grid(
-            z[:, 0].min(),
-            z[:, 0].max(),
-            z[:, 1].min(),
-            z[:, 1].max(),
-            n_points_axis
-        )
+
+    # Grid for probability map
+    n_points_axis = 50
+    xg_mesh, yg_mesh, z_grid_loader = generate_latent_grid(
+        z[:, 0].min(),
+        z[:, 0].max(),
+        z[:, 1].min(),
+        z[:, 1].max(),
+        n_points_axis
+    )
+
+    # the hook signature that just replaces the current 
+    # feature map with the given point
+    z_grid = None
+    def fw_hook(module, input, output):
+        output = z_grid   
+        z.append(output.detach())
+    
+    net[4].register_forward_hook(fw_hook)
+    
+    all_f_mu, all_f_sigma = [], []
+    for z_grid in tqdm(z_grid_loader):
         
-        all_f_mu, all_f_sigma = [], []
-        for z_grid in tqdm(z_grid_loader):
-            
-            z_grid = z_grid[0].to(device)
+        z_grid = z_grid[0].to(device)
 
-            with torch.inference_mode():
-                mu_rec_grid = mu_decoder(z_grid)
-                log_sigma_rec_grid = softclip(var_decoder(z_grid), min=-6)
+        with torch.inference_mode():
+            samples = sample(mu_q, sigma_q, n_samples=100)
+            rec_grid_i = []
+            for net_sample in samples:
 
-            sigma_rec_grid = torch.exp(log_sigma_rec_grid)
+                # replace the network parameters with the sampled parameters
+                vector_to_parameters(net_sample, net.parameters())
+                rec_grid_i = net(torch.ones(28*28).to(device))
 
-            all_f_mu += [mu_rec_grid.cpu()]
-            all_f_sigma += [sigma_rec_grid.cpu()]
+            mu_rec_grid = torch.mean(rec_grid_i, dim=1)
+            sigma_rec_grid = torch.var(rec_grid_i, dim=1).sqrt()
 
-        f_mu = torch.cat(all_f_mu, dim=0)
-        f_sigma = torch.cat(all_f_sigma, dim=0)
+        all_f_mu += [mu_rec_grid.cpu()]
+        all_f_sigma += [sigma_rec_grid.cpu()]
 
-        # get diagonal elements
-        sigma_vector = f_sigma.mean(axis=1)
+    f_mu = torch.cat(all_f_mu, dim=0)
+    f_sigma = torch.cat(all_f_sigma, dim=0)
+
+    # get diagonal elements
+    sigma_vector = f_sigma.mean(axis=1)
 
     # create figures
     if not os.path.isdir(f"../figures/{path}"): os.makedirs(f"../figures/{path}")
@@ -251,17 +292,16 @@ def test_lae(dataset, batch_size=1):
     else:
         plt.plot(z[:, 0], z[:, 1], 'x', ms=5.0, alpha=1.0)
 
-    if use_var_decoder:
-        precision_grid = np.reshape(sigma_vector, (n_points_axis, n_points_axis))
-        plt.contourf(xg_mesh, yg_mesh, precision_grid, cmap='viridis_r')
-        plt.colorbar()
+    precision_grid = np.reshape(sigma_vector, (n_points_axis, n_points_axis))
+    plt.contourf(xg_mesh, yg_mesh, precision_grid, cmap='viridis_r')
+    plt.colorbar()
 
     plt.savefig(f"../figures/{path}/ae_contour.png")
     plt.close(); plt.cla()
 
     if dataset == "mnist":
         for i in range(min(len(z), 10)):
-            nplots = 3 if use_var_decoder else 2
+            nplots = 3
 
             plt.figure()
             plt.subplot(1,nplots,1)
@@ -270,9 +310,8 @@ def test_lae(dataset, batch_size=1):
             plt.subplot(1,nplots,2)
             plt.imshow(x_rec_mu[i].reshape(28,28))
 
-            if use_var_decoder:
-                plt.subplot(1,nplots,3)
-                plt.imshow(x_rec_sigma[i].reshape(28,28))
+            plt.subplot(1,nplots,3)
+            plt.imshow(x_rec_sigma[i].reshape(28,28))
 
             plt.savefig(f"../figures/{path}/ae_recon_{i}.png")
             plt.close(); plt.cla()
@@ -287,7 +326,8 @@ def train_lae(dataset = "mnist"):
     model = LitLaplaceAutoEncoder(dataset)
 
     # default logger used by trainer
-    logger = TensorBoardLogger(save_dir="../", version=1, name="lightning_logs")
+    name = datetime.now().strftime("%b-%d-%Y-%H:%M:%S")
+    logger = TensorBoardLogger(save_dir="../lightning_log", name=name)
 
     # early stopping
     callbacks = [EarlyStopping(monitor="val_loss")]
@@ -302,6 +342,7 @@ def train_lae(dataset = "mnist"):
     path = f"{dataset}/lae_elbo"
     if not os.path.isdir(f"../weights/{path}"): os.makedirs(f"../weights/{path}")
     torch.save(model.net.state_dict(), f"../weights/{path}/net.pth")
+    torch.save(model.h, f"../weights/{path}/hessian.pth")
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from torch import nn
 from torch.nn import functional as F
 from tqdm import tqdm
 import numpy as np
+import time
 import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -15,6 +16,7 @@ from ae_models import get_encoder, get_decoder
 from utils import softclip
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from copy import deepcopy
+import torchvision
 
 
 def sample(parameters, posterior_scale, n_samples=100):
@@ -40,7 +42,7 @@ def compute_hessian(x, feature_maps, net, output_size):
     H = []
     bs = x.shape[0]
     feature_maps = [x] + feature_maps
-    tmp = torch.diag_embed(torch.ones(bs, output_size)).to(x.device)
+    tmp = torch.diag_embed(torch.ones(bs, output_size, device=x.device))
 
     with torch.no_grad():
         for k in range(len(net) - 1, -1, -1):
@@ -57,7 +59,7 @@ def compute_hessian(x, feature_maps, net, output_size):
                 H = [h_k] + H
 
             elif isinstance(net[k], torch.nn.Tanh):
-                J_tanh = torch.diag_embed(torch.ones(feature_maps[k+1].shape).to(x.device) - feature_maps[k+1]**2)
+                J_tanh = torch.diag_embed(torch.ones(feature_maps[k+1].shape, device=x.device) - feature_maps[k+1]**2)
                 # TODO: make more efficent by using row vectors
                 tmp = torch.einsum("bnm,bnj,bjk->bmk", J_tanh, tmp, J_tanh) 
 
@@ -82,10 +84,14 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         device = "cuda:0" if torch.cuda.is_available() else "cpu"  # hola frederik :) can you fix this shit?
 
         latent_size = 2
-        self.kl_weight = 1e-8
+        self.kl_weight = 0
         self.output_size = 784
         encoder = get_encoder(dataset, latent_size)
         decoder = get_decoder(dataset, latent_size)
+
+        path = f"../weights/{dataset}/ae_[use_var_dec=False]"
+        encoder.load_state_dict(torch.load(f"{path}/encoder.pth"))
+        decoder.load_state_dict(torch.load(f"{path}/mu_decoder.pth"))
 
         self.sigma_n =  1.0
         self.constant = 1.0/(2*self.sigma_n**2)
@@ -99,8 +105,13 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         for k in range(len(self.net)):
             self.net[k].register_forward_hook(fw_hook_get_latent)
 
-        s = 1.0 
-        self.h = s * torch.ones_like(parameters_to_vector(self.net.parameters())).to(device)
+        s = 1000000.0 
+        self.h = s * torch.ones_like(parameters_to_vector(self.net.parameters()), device=device)
+
+        # logging of time:
+        self.timings = {"forward_nn" : 0, "compute_hessian" : 0, "entire_training_step" : 0}
+        self.last_epoch_logged = -1
+        self.last_epoch_logged_val = -1
 
     def forward(self, x):
         out = self.net(x)
@@ -111,6 +122,8 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         return optimizer
 
     def training_step(self, train_batch, batch_idx):
+        self.timings["entire_training_step"] = time.time()
+
         x, y = train_batch
         x = x.view(x.size(0), -1)
 
@@ -124,10 +137,11 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
         mse = []
         h = []
+        x_recs = []
         # TODO: how to retain gradients
         
         # draw samples from the nn (sample nn)
-        samples = sample(mu_q, sigma_q, n_samples=2)
+        samples = sample(mu_q, sigma_q, n_samples=100)
         for net_sample in samples:
 
             # replace the network parameters with the sampled parameters
@@ -136,17 +150,22 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             self.feature_maps = []
 
             # predict with the sampled weights
-            x_rec = self.net(x.to(self._device))
+            start = time.time()
+            x_rec = self.net(x)
+            self.timings["forward_nn"] += time.time() - start
 
             # compute mse for sample net
             mse_s = F.mse_loss(x_rec, x)
 
             # compute hessian for sample net
+            start = time.time()
             h_s = compute_hessian(x, self.feature_maps, self.net, self.output_size)
+            self.timings["compute_hessian"] += time.time() - start
 
             # append results
             mse.append(mse_s)
             h.append(h_s)
+            x_recs.append(x_rec.detach())
         
         # pablo do trust me...
         h = torch.stack(h) if len(h) > 1 else h
@@ -157,9 +176,33 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
         mse = torch.stack(mse) if len(mse) > 1 else mse
         loss = self.constant * mse.mean() + self.kl_weight * kl.mean()
+
+        # log losses
         self.log('train_loss', loss)
         self.log('mse_loss', mse.mean())
         self.log('kl_loss', self.kl_weight * kl.mean())
+
+        # log time
+        self.log('time/entire_training_step', time.time() - self.timings["entire_training_step"])
+        self.log('time/compute_hessian', self.timings["compute_hessian"])
+        self.log('time/forward_nn', self.timings["forward_nn"])
+        self.timings["forward_nn"] = 0
+        self.timings["compute_hessian"] = 0
+
+        # log images
+        if self.current_epoch > self.last_epoch_logged:
+            img_grid = torch.clamp(torchvision.utils.make_grid(x[:4].view(-1, 1, 28, 28)),0, 1)
+            self.logger.experiment.add_image('train/orig_images', img_grid, self.current_epoch)
+            img_grid = torch.clamp(torchvision.utils.make_grid(x_rec[:4].view(-1, 1, 28, 28)), 0, 1)
+            self.logger.experiment.add_image('train/recons_images', img_grid, self.current_epoch)
+            mean = torch.stack(x_recs).mean(dim=0)
+            img_grid = torch.clamp(torchvision.utils.make_grid(mean[:4].view(-1, 1, 28, 28)), 0, 1)
+            self.logger.experiment.add_image('train/mean_recons_images', img_grid, self.current_epoch)
+            sigma = torch.stack(x_recs).var(dim=0).sqrt()
+            img_grid = torch.clamp(torchvision.utils.make_grid(sigma[:4].view(-1, 1, 28, 28)), 0, 1)
+            self.logger.experiment.add_image('train/var_recons_images', img_grid, self.current_epoch)
+            self.logger.experiment.flush()
+            self.last_epoch_logged += 1
 
         return loss
 
@@ -171,6 +214,14 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         loss = F.mse_loss(x_rec, x)
 
         self.log('val_loss', loss)
+
+        if self.current_epoch > self.last_epoch_logged_val:
+            img_grid = torch.clamp(torchvision.utils.make_grid(x[:4].view(-1, 1, 28, 28)), 0, 1)
+            self.logger.experiment.add_image('val/orig_images', img_grid, self.current_epoch)
+            img_grid = torch.clamp(torchvision.utils.make_grid(x_rec[:4].view(-1, 1, 28, 28)), 0, 1)
+            self.logger.experiment.add_image('val/recons_images', img_grid, self.current_epoch)
+            self.logger.experiment.flush()
+            self.last_epoch_logged_val += 1
 
 
 def test_lae(dataset, batch_size=1):
@@ -258,19 +309,20 @@ def test_lae(dataset, batch_size=1):
         return hook
     
     all_f_mu, all_f_sigma = [], []
+    dummy = torch.ones(28*28).to(device)
     for z_grid in tqdm(z_grid_loader):
         
         z_grid = z_grid[0].to(device)
         replace_hook = net[5].register_forward_pre_hook(modify_input(z_grid))
 
         with torch.inference_mode():
-
+            
             rec_grid_i = []
             for net_sample in samples:
 
                 # replace the network parameters with the sampled parameters
                 vector_to_parameters(net_sample, net.parameters())
-                rec_grid_i += [net(torch.ones(28*28).to(device))]
+                rec_grid_i += [net(dummy)]
 
             rec_grid_i = torch.stack(rec_grid_i)
 

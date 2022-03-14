@@ -40,6 +40,7 @@ def create_dataset():
     plt.plot(X[y[:,0]==0,0], X[y[:,0]==0,1], "ro")
     plt.plot(X[y[:,0]==1,0], X[y[:,0]==1,1], "bo")
     plt.savefig("../figures/toy_example/data.png")
+    plt.cla(); plt.close();
     print(X.shape, y.shape)
 
     dataloader = DataLoader(TensorDataset(X, y), batch_size=32, pin_memory=True)
@@ -93,12 +94,17 @@ def eval_classifier(dataset, model):
         _, predicted = torch.max(yhat.data, 1)
         total += y.size(0)
         correct += (predicted == y[:, 0]).sum().item()
-        idx = predicted == 0
-        plt.plot(X[idx, 0], X[idx, 1], "ro")
-        plt.plot(X[~idx, 0], X[~idx, 1], "bo")
+        idx = predicted == 1
+
+        plt.plot(X[y[:, 0] == 0, 0], X[y[:, 0] == 0, 1], "ro")
+        plt.plot(X[y[:, 0] == 1, 0], X[y[:, 0] == 1, 1], "bo")
+
+        plt.plot(X[idx, 0], X[idx, 1], "b.")
+        plt.plot(X[~idx, 0], X[~idx, 1], "r.")
         
     print(correct / total)
     plt.savefig("../figures/toy_example/predictions.png")
+    plt.cla(); plt.close();
 
 def load_model(model):
 
@@ -126,6 +132,9 @@ def compute_hessian_laplace_redux(model, dataloader):
     save_laplace(la, f"{path}/laplace.pkl")
 
     print(la.H)
+    plt.plot(la.H.numpy(), '-o')
+    plt.savefig("../figures/toy_example/h_laplace_redux.png")
+    plt.cla(); plt.close();
 
 
 def compute_hessian_ours(dataloader, net):
@@ -186,6 +195,10 @@ def compute_hessian_ours(dataloader, net):
     # compute mean over dataset
     final_H = 1 / counter * H_running_sum
     print(final_H)
+
+    plt.plot(final_H.numpy(), '-o')
+    plt.savefig("../figures/toy_example/h_ours.png")
+    plt.cla(); plt.close();
                         
     return final_H
 

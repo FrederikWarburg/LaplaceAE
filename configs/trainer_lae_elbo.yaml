@@ -1,0 +1,13 @@
+
+# training
+train : True
+kl_weight: 1e-6
+train_samples: 10
+test_samples: 100
+
+# data
+dataset : "mnist"
+batch_size: 32
+    
+# model
+pretrained : False

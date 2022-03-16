@@ -17,6 +17,8 @@ from utils import softclip
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from copy import deepcopy
 import torchvision
+import yaml
+import argparse
 
 
 def sample(parameters, posterior_scale, n_samples=100):
@@ -37,8 +39,8 @@ def get_model(encoder, decoder):
     return nn.Sequential(net)
 
 
-def compute_hessian(x, feature_maps, net, output_size):
-        
+def compute_hessian(x, feature_maps, net, output_size, h_scale):
+    
     H = []
     bs = x.shape[0]
     feature_maps = [x] + feature_maps
@@ -71,32 +73,35 @@ def compute_hessian(x, feature_maps, net, output_size):
 
     H = torch.cat(H, dim = 1)
     
-    # mean over batch size
-    H = torch.mean(H, dim = 0)
+    # mean over batch size scaled by the size of the dataset
+    H = h_scale * torch.mean(H, dim = 0)
                 
     return H
 
 
 class LitLaplaceAutoEncoder(pl.LightningModule):
-    def __init__(self, dataset):
+    def __init__(self, config, dataset_size):
         super().__init__()
 
         device = "cuda:0" if torch.cuda.is_available() else "cpu"  # hola frederik :) can you fix this shit?
 
         latent_size = 2
-        self.kl_weight = 0
-        self.output_size = 784
-        encoder = get_encoder(dataset, latent_size)
-        decoder = get_decoder(dataset, latent_size)
+        self.kl_weight = config["kl_weight"]
+        
+        self.dataset_size = dataset_size
+        encoder = get_encoder(config["dataset"], latent_size)
+        decoder = get_decoder(config["dataset"], latent_size)
 
-        path = f"../weights/{dataset}/ae_[use_var_dec=False]"
-        encoder.load_state_dict(torch.load(f"{path}/encoder.pth"))
-        decoder.load_state_dict(torch.load(f"{path}/mu_decoder.pth"))
+        if config["pretrained"]:
+            path = f"../weights/{config['dataset']}/ae_[use_var_dec=False]"
+            encoder.load_state_dict(torch.load(f"{path}/encoder.pth"))
+            decoder.load_state_dict(torch.load(f"{path}/mu_decoder.pth"))
 
         self.sigma_n =  1.0
         self.constant = 1.0/(2*self.sigma_n**2)
         
         self.net = get_model(encoder, decoder)
+        self.output_size = self.net[-1].out_features
 
         self.feature_maps = []
         def fw_hook_get_latent(module, input, output):
@@ -105,7 +110,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         for k in range(len(self.net)):
             self.net[k].register_forward_hook(fw_hook_get_latent)
 
-        s = 1000000.0 
+        s = self.dataset_size
         self.h = s * torch.ones_like(parameters_to_vector(self.net.parameters()), device=device)
 
         # logging of time:
@@ -133,7 +138,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         mu_q = parameters_to_vector(self.net.parameters())
         k = len(mu_q)
 
-        kl = 0.5 * (torch.log(1 / sigma_q) - k + torch.matmul(mu_q.T,mu_q) + torch.sum(sigma_q))
+        kl = 0.5 * (torch.log(1.0 / sigma_q) - k + torch.matmul(mu_q.T,mu_q) + torch.sum(sigma_q))
 
         mse = []
         h = []
@@ -141,12 +146,13 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         # TODO: how to retain gradients
         
         # draw samples from the nn (sample nn)
-        samples = sample(mu_q, sigma_q, n_samples=100)
+        samples = sample(mu_q, sigma_q, n_samples=config["train_samples"])
         for net_sample in samples:
 
             # replace the network parameters with the sampled parameters
             vector_to_parameters(net_sample, self.net.parameters())
 
+            # reset or init
             self.feature_maps = []
 
             # predict with the sampled weights
@@ -159,27 +165,29 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
             # compute hessian for sample net
             start = time.time()
-            h_s = compute_hessian(x, self.feature_maps, self.net, self.output_size)
+            h_s = compute_hessian(x, self.feature_maps, self.net, self.output_size, self.dataset_size)
             self.timings["compute_hessian"] += time.time() - start
-
+            
             # append results
             mse.append(mse_s)
             h.append(h_s)
             x_recs.append(x_rec.detach())
         
-        # pablo do trust me...
-        h = torch.stack(h) if len(h) > 1 else h
-        self.h = self.constant * h.mean(dim=0) + 1
+        # note that + 1 is the identity which is the hessian of the KL term
+        h = torch.stack(h).mean(dim=0) if len(h) > 1 else h[0]
+        self.h = self.constant * h + 1
+
+        assert h.mean(dim=0).min() >= 0, "hessian of mse has negative values"
+
+        mse = torch.stack(mse).mean() if len(mse) > 1 else mse[0]
+        loss = self.constant * mse + self.kl_weight * kl.mean()
 
         # reset the network parameters with the mean parameter (MAP estimate parameters)
         vector_to_parameters(mu_q, self.net.parameters())
-
-        mse = torch.stack(mse) if len(mse) > 1 else mse
-        loss = self.constant * mse.mean() + self.kl_weight * kl.mean()
-
+        
         # log losses
         self.log('train_loss', loss)
-        self.log('mse_loss', mse.mean())
+        self.log('mse_loss', mse)
         self.log('kl_loss', self.kl_weight * kl.mean())
 
         # log time
@@ -188,6 +196,22 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         self.log('time/forward_nn', self.timings["forward_nn"])
         self.timings["forward_nn"] = 0
         self.timings["compute_hessian"] = 0
+
+        # log sigma_q
+        ratio = abs(sigma_q) / abs(mu_q)
+        if self.current_epoch > self.last_epoch_logged:
+            self.logger.experiment.add_histogram('train/sigma_q', sigma_q, self.current_epoch)
+            self.logger.experiment.add_histogram('train/ratio_weight_sigma_q', ratio, self.current_epoch)
+
+        self.log('sigma_q/max', torch.max(sigma_q))
+        self.log('sigma_q/min', torch.min(sigma_q))
+        self.log('sigma_q/mean', torch.mean(sigma_q))
+        self.log('sigma_q/median', torch.median(sigma_q))
+
+        self.log('ratio_weight_sigma_q/max', torch.max(ratio))
+        self.log('ratio_weight_sigma_q/min', torch.min(ratio))
+        self.log('ratio_weight_sigma_q/mean', torch.mean(ratio))
+        self.log('ratio_weight_sigma_q/median', torch.median(ratio))
 
         # log images
         if self.current_epoch > self.last_epoch_logged:
@@ -224,15 +248,15 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             self.last_epoch_logged_val += 1
 
 
-def test_lae(dataset, batch_size=1):
+def test_lae(config, batch_size=1):
 
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    path = f"{dataset}/lae_elbo"
+    path = f"{config['dataset']}/lae_elbo"
 
     latent_size = 2
-    encoder = get_encoder(dataset, latent_size)
-    decoder = get_decoder(dataset, latent_size)
+    encoder = get_encoder(config['dataset'], latent_size)
+    decoder = get_decoder(config['dataset'], latent_size)
 
     net = get_model(encoder, decoder).eval().to(device)
     net.load_state_dict(torch.load(f"../weights/{path}/net.pth"))
@@ -242,14 +266,14 @@ def test_lae(dataset, batch_size=1):
     
     # draw samples from the nn (sample nn)
     mu_q = parameters_to_vector(net.parameters())
-    samples = sample(mu_q, sigma_q, n_samples=100)
+    samples = sample(mu_q, sigma_q, n_samples=config["test_samples"])
 
     z_i = []
     def fw_hook_get_latent(module, input, output):
         z_i.append(output.detach().cpu())    
     hook = net[4].register_forward_hook(fw_hook_get_latent)
 
-    train_loader, val_loader = get_data(dataset, batch_size)
+    train_loader, val_loader = get_data(config['dataset'], batch_size)
 
     # forward eval
     x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = [], [], [], [], [], []
@@ -342,7 +366,7 @@ def test_lae(dataset, batch_size=1):
     if not os.path.isdir(f"../figures/{path}"): os.makedirs(f"../figures/{path}")
 
     plt.figure()
-    if dataset == "mnist":
+    if config["dataset"] == "mnist":
         for yi in np.unique(labels):
             idx = labels == yi
             plt.plot(z_mu[idx, 0], z_mu[idx, 1], 'x', ms=5.0, alpha=1.0)
@@ -356,7 +380,7 @@ def test_lae(dataset, batch_size=1):
     plt.savefig(f"../figures/{path}/ae_contour.png")
     plt.close(); plt.cla()
 
-    if dataset == "mnist":
+    if config["dataset"] == "mnist":
         for i in range(min(len(z_mu), 10)):
             nplots = 3
             plt.figure()
@@ -373,13 +397,13 @@ def test_lae(dataset, batch_size=1):
             plt.close(); plt.cla()
 
 
-def train_lae(dataset = "mnist"):
+def train_lae(config):
 
     # data
-    train_loader, val_loader = get_data(dataset, batch_size=32)
+    train_loader, val_loader = get_data(config["dataset"], batch_size=config["batch_size"])
 
     # model
-    model = LitLaplaceAutoEncoder(dataset)
+    model = LitLaplaceAutoEncoder(config, train_loader.dataset.__len__())
 
     # default logger used by trainer
     name = datetime.now().strftime("%b-%d-%Y-%H:%M:%S")
@@ -395,7 +419,7 @@ def train_lae(dataset = "mnist"):
     trainer.fit(model, train_loader, val_loader)
     
     # save weights
-    path = f"{dataset}/lae_elbo"
+    path = f"{config['dataset']}/lae_elbo"
     if not os.path.isdir(f"../weights/{path}"): os.makedirs(f"../weights/{path}")
     torch.save(model.net.state_dict(), f"../weights/{path}/net.pth")
     torch.save(model.h, f"../weights/{path}/hessian.pth")
@@ -403,13 +427,18 @@ def train_lae(dataset = "mnist"):
 
 if __name__ == "__main__":
 
-    dataset = "mnist"
-    train = True
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, default="../configs/trainer_lae_elbo.yaml",
+                        help='path to config you want to use')
+    args = parser.parse_args()
+
+    with open(args.config) as file:
+        config = yaml.full_load(file)
 
     # train or load auto encoder
-    if train:
-        train_lae(dataset)
+    if config["train"]:
+        train_lae(config)
 
-    test_lae(dataset)
+    test_lae(config)
 
     

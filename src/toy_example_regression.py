@@ -24,23 +24,18 @@ def load_laplace(filepath):
 def create_dataset():
 
     N = 1000
-    X1 = np.random.randn(N, 2) + 1
-    y1 = np.zeros(N)
-
-    X2 = np.random.randn(N, 2) - 1
-    y2 = np.ones(N)
-
-    X = torch.tensor(np.concatenate([X1, X2])).type(torch.FloatTensor)
-    y = torch.tensor(np.concatenate([y1, y2])).type(torch.FloatTensor).unsqueeze(1)
-    y = torch.cat([y, 1 - y], dim=1)
-
-    os.makedirs("../figures/toy_example", exist_ok=True)
-    plt.plot(X[y[:,0]==0,0], X[y[:,0]==0,1], "ro")
-    plt.plot(X[y[:,0]==1,0], X[y[:,0]==1,1], "bo")
-    plt.savefig("../figures/toy_example/data.png")
+    X = np.random.rand(N)
+    y = 4.5*np.cos(2*np.pi*X + 1.5*np.pi) - \
+        3*np.sin(4.3*np.pi*X + 0.3*np.pi) + \
+        3.0*X - 7.5
+    X = torch.tensor(X).unsqueeze(1).type(torch.float)
+    y = torch.tensor(y).type(torch.float)
+    os.makedirs("../figures/toy_regression_example", exist_ok=True)
+    plt.plot(X, y, ".")
+    plt.savefig("../figures/toy_regression_example/data.png")
     plt.cla(); plt.close();
     print(X.shape, y.shape)
-
+    
     dataloader = DataLoader(TensorDataset(X, y), batch_size=32, pin_memory=True)
 
     return dataloader
@@ -48,16 +43,18 @@ def create_dataset():
 def create_model():
 
     model = torch.nn.Sequential(
-        torch.nn.Linear(2, 10), 
+        torch.nn.Linear(1, 10), 
         torch.nn.Tanh(), 
-        torch.nn.Linear(10, 2)
+        torch.nn.Linear(10, 10),
+        torch.nn.Tanh(), 
+        torch.nn.Linear(10, 1),
     )
 
     return model
 
-def train_classifier(dataset, model):
+def train_model(dataset, model):
     
-    criterion = torch.nn.CrossEntropyLoss()
+    criterion = torch.nn.MSELoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
     for epoch in range(1):
@@ -71,18 +68,15 @@ def train_classifier(dataset, model):
             loss.backward()
             optimizer.step()
 
-            _, predicted = torch.max(yhat.data, 1)
-            total += y.size(0)
-            correct += (predicted == y[:, 1]).sum().item()
-
-        print(epoch, loss, correct/total )
+        print(epoch, loss)
 
     # save weights
-    path = '../weights/toy_example/classifier.pth'
-    os.makedirs("../weights/toy_example", exist_ok=True)
+    path = '../weights/toy_regression_example/model.pth'
+    os.makedirs("../weights/toy_regression_example", exist_ok=True)
     torch.save(model.state_dict(), path)
 
-def eval_classifier(dataset, model):
+def eval_regression(dataset, model):
+    raise NotImplementedError
     
     total, correct = 0, 0
     for X, y in dataset:
@@ -106,7 +100,7 @@ def eval_classifier(dataset, model):
 
 def load_model(model):
 
-    path = '../weights/toy_example/classifier.pth'
+    path = '../weights/toy_regression_example/model.pth'
     statedict = torch.load(path)
     model.load_state_dict(statedict)
     return model
@@ -115,7 +109,7 @@ def compute_hessian_laplace_redux(model, dataloader):
 
     la = Laplace(
         model, 
-        'classification', 
+        'regression', 
         hessian_structure='diag', 
         subset_of_weights="all",
     )
@@ -125,17 +119,19 @@ def compute_hessian_laplace_redux(model, dataloader):
     la.optimize_prior_precision()
 
     # save weights
-    path = f"../weights/toy_example/"
+    path = f"../weights/toy_regression_example/"
     if not os.path.isdir(path): os.makedirs(path)
     save_laplace(la, f"{path}/laplace.pkl")
 
     print(la.H)
     plt.plot(la.H.numpy(), '-o')
-    plt.savefig("../figures/toy_example/h_laplace_redux.png")
+    plt.savefig("../figures/toy_regression_example/h_laplace_redux.png")
     plt.cla(); plt.close();
 
+    return la.H.numpy()
+
 def compute_hessian_ours(dataloader, net):
-    output_size = 2
+    output_size = 1
 
     # keep track of running sum
     H_running_sum = torch.zeros_like(parameters_to_vector(net.parameters()))
@@ -185,15 +181,16 @@ def compute_hessian_ours(dataloader, net):
 
             counter += len(torch.cat(H, dim=1))
             H_running_sum += torch.cat(H, dim=1).sum(0)
-
+    
     assert counter == dataloader.dataset.__len__()
 
     # compute mean over dataset
-    final_H = 1 / counter * H_running_sum
+    #final_H = 1 / counter * H_running_sum
+    final_H = H_running_sum
     print(final_H)
 
     plt.plot(final_H.numpy(), '-o')
-    plt.savefig("../figures/toy_example/h_ours.png")
+    plt.savefig("../figures/toy_regression_example/h_ours.png")
     plt.cla(); plt.close();
                         
     return final_H
@@ -211,14 +208,20 @@ if __name__ == "__main__":
 
     # train or load auto encoder
     if train:
-        train_classifier(dataset, model)
+        train_model(dataset, model)
 
     model = load_model(model)
     model.eval()
-    eval_classifier(dataset, model)
+    # eval_classifier(dataset, model)
 
     if laplace_redux:
-        compute_hessian_laplace_redux(model, dataset)
+        H = compute_hessian_laplace_redux(model, dataset)
 
     if laplace_ours:
-        compute_hessian_ours(dataset, model)
+        H_our = compute_hessian_ours(dataset, model)
+
+    breakpoint()
+    plt.plot(H - H_our.numpy(), "-o")
+    plt.savefig("../figures/toy_regression_example/diff_hessains.png")
+    plt.cla(); plt.close();
+    print(H - H_our.numpy())

@@ -4,11 +4,13 @@ We have conducted experiments for the following models.
 
 Models:
 - AE
+  - MSE
+  - NLL
 - VAE
 - AE dropout
 - LAE post hoc
-  -- decoder only
-  -- entire model
+  - decoder only
+  - entire model
 - LAE elbo
 
 For each model, we compute the following metrics and or figures:
@@ -31,7 +33,6 @@ Metrics:
 - Latent space:
    - [TODO: some geodesic stuff?]
 
-# Latent space
 ## LAE
 
 <table>
@@ -169,8 +170,94 @@ Metrics:
 
 ## AE [MSE]
 
+<table>
+  <tr>
+    <td>Encoder uncertainties</td>
+     <td>Decoder uncertainties</td>
+  </tr>
+  <tr>
+   <td><img src="figures/mnist/ae_[use_var_dec=False]/ood_latent_space.png">
+    <td><img src="figures/mnist/ae_[use_var_dec=False]/ae_contour.png"></td>
+    </td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_[use_var_dec=False]/ood_z_sigma_distribution.png"></td>
+    <td><img src="figures/mnist/ae_[use_var_dec=False]/ood_x_rec_sigma_distribution.png"></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td>In distribution</td>
+     <td>Out-of-distribution</td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_[use_var_dec=False]/recon_0.png"></td>
+    <td><img src="figures/mnist/ae_[use_var_dec=False]/ood_recon_0.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_[use_var_dec=False]/recon_1.png"></td>
+    <td><img src="figures/mnist/ae_[use_var_dec=False]/ood_recon_1.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_[use_var_dec=False]/recon_2.png"></td>
+    <td><img src="figures/mnist/ae_[use_var_dec=False]/ood_recon_2.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_[use_var_dec=False]/recon_3.png"></td>
+    <td><img src="figures/mnist/ae_[use_var_dec=False]/ood_recon_3.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_[use_var_dec=False]/recon_4.png"></td>
+    <td><img src="figures/mnist/ae_[use_var_dec=False]/ood_recon_4.png"></td>
+  </tr>
+ </table>
+
 
 ## AE [NLL]
+
+<table>
+  <tr>
+    <td>Encoder uncertainties</td>
+     <td>Decoder uncertainties</td>
+  </tr>
+  <tr>
+   <td><img src="figures/mnist/ae_[use_var_dec=True]/ood_latent_space.png">
+    <td><img src="figures/mnist/ae_[use_var_dec=True]/ae_contour.png"></td>
+    </td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_[use_var_dec=True]/ood_z_sigma_distribution.png"></td>
+    <td><img src="figures/mnist/ae_[use_var_dec=True]/ood_x_rec_sigma_distribution.png"></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td>In distribution</td>
+     <td>Out-of-distribution</td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_[use_var_dec=True]/recon_0.png"></td>
+    <td><img src="figures/mnist/ae_[use_var_dec=True]/ood_recon_0.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_[use_var_dec=True]/recon_1.png"></td>
+    <td><img src="figures/mnist/ae_[use_var_dec=True]/ood_recon_1.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_[use_var_dec=True]/recon_2.png"></td>
+    <td><img src="figures/mnist/ae_[use_var_dec=True]/ood_recon_2.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_[use_var_dec=True]/recon_3.png"></td>
+    <td><img src="figures/mnist/ae_[use_var_dec=True]/ood_recon_3.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_[use_var_dec=True]/recon_4.png"></td>
+    <td><img src="figures/mnist/ae_[use_var_dec=True]/ood_recon_4.png"></td>
+  </tr>
+ </table>
 
 
 ## AE [MC-DROPOUT]

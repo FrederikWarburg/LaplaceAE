@@ -12,7 +12,7 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from data import get_data, generate_latent_grid
 from models.ae_models import get_encoder, get_decoder
 from utils import softclip
-from visualizer import plot_mnist_reconstructions, plot_latent_space
+from visualizer import plot_mnist_reconstructions, plot_latent_space, plot_latent_space_ood, plot_ood_distributions
 
 class LitVariationalAutoEncoder(pl.LightningModule):
     def __init__(self, dataset, use_var_decoder):
@@ -95,28 +95,8 @@ class LitVariationalAutoEncoder(pl.LightningModule):
         self.log('val_kl_loss', kl)
 
 
-def test_vae(dataset, batch_size=1, use_var_decoder=False):
+def inference_on_dataset(mu_encoder, var_encoder, mu_decoder, var_decoder, val_loader, device):
 
-    # initialize_model
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    path = f"{dataset}/vae_[use_var_dec={use_var_decoder}]"
-    
-    latent_size = 2
-    mu_encoder = get_encoder(dataset, latent_size).eval().to(device)
-    var_encoder = get_encoder(dataset, latent_size).eval().to(device)
-    mu_encoder.load_state_dict(torch.load(f"../weights/{path}/mu_encoder.pth"))
-    var_encoder.load_state_dict(torch.load(f"../weights/{path}/var_encoder.pth"))
-
-    mu_decoder = get_decoder(dataset, latent_size).eval().to(device)
-    mu_decoder.load_state_dict(torch.load(f"../weights/{path}/mu_decoder.pth"))
-
-    if use_var_decoder:
-        var_decoder = get_decoder(dataset, latent_size).eval().to(device)
-        var_decoder.load_state_dict(torch.load(f"../weights/{path}/var_decoder.pth"))
-
-    train_loader, val_loader = get_data(dataset, batch_size)
-
-    # forward eval
     x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = [], [], [], [], [], []
     for i, (xi, yi) in tqdm(enumerate(val_loader)):
         xi = xi.view(xi.size(0), -1).to(device)
@@ -180,48 +160,87 @@ def test_vae(dataset, batch_size=1, use_var_decoder=False):
     x_rec_mu = torch.cat(x_rec_mu, dim=0).numpy()
     x_rec_sigma = torch.cat(x_rec_sigma, dim=0).numpy()
 
+    return x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels
+
+def inference_on_latent_grid(mu_decoder, var_decoder, z_mu, device):
+
+    # Grid for probability map
+    n_points_axis = 50
+    xg_mesh, yg_mesh, z_grid_loader = generate_latent_grid(
+        z_mu[:, 0].min(),
+        z_mu[:, 0].max(),
+        z_mu[:, 1].min(),
+        z_mu[:, 1].max(),
+        n_points_axis
+    )
+    
+    all_f_mu, all_f_sigma = [], []
+    for z_grid in tqdm(z_grid_loader):
+        
+        z_grid = z_grid[0].to(device)
+
+        with torch.inference_mode():
+            mu_rec_grid = mu_decoder(z_grid)
+            log_sigma_rec_grid = softclip(var_decoder(z_grid), min=-3)
+
+        sigma_rec_grid = torch.exp(log_sigma_rec_grid)
+
+        all_f_mu += [mu_rec_grid.cpu()]
+        all_f_sigma += [sigma_rec_grid.cpu()]
+
+    f_mu = torch.cat(all_f_mu, dim=0)
+    f_sigma = torch.cat(all_f_sigma, dim=0)
+
+    # get diagonal elements
+    sigma_vector = f_sigma.mean(axis=1)
+
+    return xg_mesh, yg_mesh, sigma_vector, n_points_axis
+
+def test_vae(config):
+
+    # initialize_model
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    path = f"{config['dataset']}/vae_[use_var_dec={config['use_var_decoder']}]"
+    
+    latent_size = 2
+    mu_encoder = get_encoder(config["dataset"], latent_size).eval().to(device)
+    var_encoder = get_encoder(config["dataset"], latent_size).eval().to(device)
+    mu_encoder.load_state_dict(torch.load(f"../weights/{path}/mu_encoder.pth"))
+    var_encoder.load_state_dict(torch.load(f"../weights/{path}/var_encoder.pth"))
+
+    mu_decoder = get_decoder(config["dataset"], latent_size).eval().to(device)
+    mu_decoder.load_state_dict(torch.load(f"../weights/{path}/mu_decoder.pth"))
+
+    if config['use_var_decoder']:
+        var_decoder = get_decoder(config["dataset"], latent_size).eval().to(device)
+        var_decoder.load_state_dict(torch.load(f"../weights/{path}/var_decoder.pth"))
+
+    _, val_loader = get_data(config["dataset"], config["batch_size"])
+    _, ood_val_loader = get_data(config["ood_dataset"], config["batch_size"])
+
+    # forward eval
+    x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = inference_on_dataset(mu_encoder, var_encoder, mu_decoder, var_decoder, val_loader, device)
+    ood_x, ood_z_mu, ood_z_sigma, ood_x_rec_mu, ood_x_rec_sigma, ood_labels = inference_on_dataset(mu_encoder, var_encoder, mu_decoder, var_decoder, ood_val_loader, device)
+    
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = None, None, None, None
     if use_var_decoder:
-        # Grid for probability map
-        n_points_axis = 50
-        xg_mesh, yg_mesh, z_grid_loader = generate_latent_grid(
-            z_mu[:, 0].min(),
-            z_mu[:, 0].max(),
-            z_mu[:, 1].min(),
-            z_mu[:, 1].max(),
-            n_points_axis
-        )
-        
-        all_f_mu, all_f_sigma = [], []
-        for z_grid in tqdm(z_grid_loader):
-            
-            z_grid = z_grid[0].to(device)
-
-            with torch.inference_mode():
-                mu_rec_grid = mu_decoder(z_grid)
-                log_sigma_rec_grid = softclip(var_decoder(z_grid), min=-3)
-
-            sigma_rec_grid = torch.exp(log_sigma_rec_grid)
-
-            all_f_mu += [mu_rec_grid.cpu()]
-            all_f_sigma += [sigma_rec_grid.cpu()]
-
-        f_mu = torch.cat(all_f_mu, dim=0)
-        f_sigma = torch.cat(all_f_sigma, dim=0)
-
-        # get diagonal elements
-        sigma_vector = f_sigma.mean(axis=1)
+        xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(mu_decoder, var_decoder, z_mu, device)
 
     # create figures
     if not os.path.isdir(f"../figures/{path}"): os.makedirs(f"../figures/{path}")
 
-    if dataset != "mnist":
+    if config["dataset"] != "mnist":
         labels = None
         
     plot_latent_space(path, z_mu, labels, xg_mesh, yg_mesh, sigma_vector, n_points_axis)
 
-    if dataset == "mnist":
+    if config["dataset"] == "mnist":
         plot_mnist_reconstructions(path, x, x_rec_mu, x_rec_sigma)
+    if config["ood_dataset"] == "kmnist":
+        plot_mnist_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma)
+
+    plot_latent_space_ood(path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels)
+    plot_ood_distributions(path, z_sigma, ood_z_sigma, x_rec_sigma, ood_x_rec_sigma)
 
 
 def train_vae(dataset = "mnist", use_var_decoder=False):

@@ -34,26 +34,151 @@ Metrics:
 # Latent space
 ## LAE
 
-![](figures/mnist/lae_elbo/ae_contour.png)
-![](figures/mnist/lae_elbo/ood_latent_space.png)
-![](figures/mnist/lae_elbo/ood_z_sigma_distribution.png)
+<table>
+  <tr>
+    <td>Encoder uncertainties</td>
+     <td>Decoder uncertainties</td>
+  </tr>
+  <tr>
+   <td><img src="figures/mnist/lae_elbo/ood_latent_space.png">
+    <td><img src="figures/mnist/lae_elbo/ae_contour.png"></td>
+    </td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_elbo/ood_z_sigma_distribution.png"></td>
+    <td><img src="figures/mnist/lae_elbo/ood_x_rec_sigma_distribution.png"></td>
+  </tr>
+</table>
 
-# Output space
+<table>
+  <tr>
+    <td>In distribution</td>
+     <td>Out-of-distribution</td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_elbo/recon_0.png"></td>
+    <td><img src="figures/mnist/lae_elbo/ood_recon_0.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_elbo/recon_1.png"></td>
+    <td><img src="figures/mnist/lae_elbo/ood_recon_1.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_elbo/recon_2.png"></td>
+    <td><img src="figures/mnist/lae_elbo/ood_recon_2.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_elbo/recon_3.png"></td>
+    <td><img src="figures/mnist/lae_elbo/ood_recon_3.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_elbo/recon_4.png"></td>
+    <td><img src="figures/mnist/lae_elbo/ood_recon_4.png"></td>
+  </tr>
+ </table>
 
-## LAE
+## LAE post hoc [Encoder & Decoder]
 
-### In distribution
-![](figures/mnist/lae_elbo/recon_0.png)
-![](figures/mnist/lae_elbo/recon_1.png)
-![](figures/mnist/lae_elbo/recon_2.png)
-![](figures/mnist/lae_elbo/recon_3.png)
+<table>
+  <tr>
+    <td>Encoder uncertainties</td>
+     <td>Decoder uncertainties</td>
+  </tr>
+  <tr>
+   <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=True]/ood_latent_space.png">
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=True]/ae_contour.png"></td>
+    </td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=True]/ood_z_sigma_distribution.png"></td>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=True]/ood_x_rec_sigma_distribution.png"></td>
+  </tr>
+</table>
 
-### Out-of-distribution
-![](figures/mnist/lae_elbo/ood_recon_0.png)
-![](figures/mnist/lae_elbo/ood_recon_1.png)
-![](figures/mnist/lae_elbo/ood_recon_2.png)
-![](figures/mnist/lae_elbo/ood_recon_3.png)
+<table>
+  <tr>
+    <td>In distribution</td>
+     <td>Out-of-distribution</td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=True]/recon_0.png"></td>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=True]/ood_recon_0.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=True]/recon_1.png"></td>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=True]/ood_recon_1.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=True]/recon_2.png"></td>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=True]/ood_recon_2.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=True]/recon_3.png"></td>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=True]/ood_recon_3.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=True]/recon_4.png"></td>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=True]/ood_recon_4.png"></td>
+  </tr>
+ </table>
 
-### Distribution of variances
+## LAE post hoc [Only Decoder]
 
-![](figures/mnist/lae_elbo/ood_x_rec_sigma_distribution.png)
+<table>
+  <tr>
+    <td>Encoder uncertainties</td>
+     <td>Decoder uncertainties</td>
+  </tr>
+  <tr>
+   <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=False]/ood_latent_space.png">
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=False]/ae_contour.png"></td>
+    </td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=False]/ood_z_sigma_distribution.png"></td>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=False]/ood_x_rec_sigma_distribution.png"></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td>In distribution</td>
+     <td>Out-of-distribution</td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=False]/recon_0.png"></td>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=False]/ood_recon_0.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=False]/recon_1.png"></td>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=False]/ood_recon_1.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=False]/recon_2.png"></td>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=False]/ood_recon_2.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=False]/recon_3.png"></td>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=False]/ood_recon_3.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=False]/recon_4.png"></td>
+    <td><img src="figures/mnist/lae_post_hoc_[use_la_encoder=False]/ood_recon_4.png"></td>
+  </tr>
+ </table>
+
+## AE [MSE]
+
+
+## AE [NLL]
+
+
+## AE [MC-DROPOUT]
+
+
+## VAE [Sampling]
+
+
+## VAE [Variance Decoder]
+
+

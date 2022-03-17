@@ -116,7 +116,7 @@ def test_lae_decoder(config):
 
     latent_size = 2
     encoder = get_encoder(config["dataset"], latent_size).eval().to(device)
-    encoder.load_state_dict(torch.load(f"../weights/{path}/encoder.pth"))
+    encoder.load_state_dict(torch.load(f"../weights/mnist/ae_[use_var_dec=False]/encoder.pth"))
 
     la = load_laplace(f"../weights/{path}/decoder.pkl")
     

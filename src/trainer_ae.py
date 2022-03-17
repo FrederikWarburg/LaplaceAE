@@ -10,8 +10,9 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from data import get_data, generate_latent_grid
-from ae_models import get_encoder, get_decoder
+from models.ae_models import get_encoder, get_decoder
 from utils import softclip
+from visualizer import plot_mnist_reconstructions, plot_latent_space
 
 
 class LitAutoEncoder(pl.LightningModule):
@@ -115,7 +116,10 @@ def test_ae(dataset, batch_size=1, use_var_decoder=False):
     x_rec_mu = torch.cat(x_rec_mu, dim=0).numpy()
     if use_var_decoder:
         x_rec_sigma = torch.cat(x_rec_sigma, dim=0).numpy()
+    else:
+        x_rec_sigma = None
 
+    xg_mesh, yg_mesh, sigma_vector, n_points_axis = None, None, None, None
     if use_var_decoder:
         # Grid for probability map
         n_points_axis = 50
@@ -150,39 +154,13 @@ def test_ae(dataset, batch_size=1, use_var_decoder=False):
     # create figures
     if not os.path.isdir(f"../figures/{path}"): os.makedirs(f"../figures/{path}")
 
-    plt.figure()
-    if dataset == "mnist":
-        for yi in np.unique(labels):
-            idx = labels == yi
-            plt.plot(z[idx, 0], z[idx, 1], 'x', ms=5.0, alpha=1.0)
-    else:
-        plt.plot(z[:, 0], z[:, 1], 'x', ms=5.0, alpha=1.0)
+    if config["dataset"] != "mnist":
+        labels = None 
 
-    if use_var_decoder:
-        precision_grid = np.reshape(sigma_vector, (n_points_axis, n_points_axis))
-        plt.contourf(xg_mesh, yg_mesh, precision_grid, cmap='viridis_r')
-        plt.colorbar()
+    plot_latent_space(path, z, labels, xg_mesh, yg_mesh, sigma_vector, n_points_axis)
 
-    plt.savefig(f"../figures/{path}/ae_contour.png")
-    plt.close(); plt.cla()
-
-    if dataset == "mnist":
-        for i in range(min(len(z), 10)):
-            nplots = 3 if use_var_decoder else 2
-
-            plt.figure()
-            plt.subplot(1,nplots,1)
-            plt.imshow(x[i].reshape(28,28))
-
-            plt.subplot(1,nplots,2)
-            plt.imshow(x_rec_mu[i].reshape(28,28))
-
-            if use_var_decoder:
-                plt.subplot(1,nplots,3)
-                plt.imshow(x_rec_sigma[i].reshape(28,28))
-
-            plt.savefig(f"../figures/{path}/ae_recon_{i}.png")
-            plt.close(); plt.cla()
+    if config["dataset"] == "mnist":
+        plot_mnist_reconstructions(path, x, x_rec_mu, x_rec_sigma)
 
 
 def train_ae(dataset = "mnist", use_var_decoder=False):

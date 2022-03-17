@@ -1,5 +1,5 @@
 from trainer_ae import train_ae, test_ae
-from trainer_lae import train_lae, test_lae
+from trainer_lae_posthoc import train_lae, test_lae
 
 
 if __name__ == "__main__":

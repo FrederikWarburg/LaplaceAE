@@ -10,8 +10,9 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from data import get_data, generate_latent_grid
-from ae_models import get_encoder, get_decoder
+from models.ae_models import get_encoder, get_decoder
 from utils import softclip
+from visualizer import plot_mnist_reconstructions, plot_latent_space
 
 class LitVariationalAutoEncoder(pl.LightningModule):
     def __init__(self, dataset, use_var_decoder):
@@ -179,6 +180,7 @@ def test_vae(dataset, batch_size=1, use_var_decoder=False):
     x_rec_mu = torch.cat(x_rec_mu, dim=0).numpy()
     x_rec_sigma = torch.cat(x_rec_sigma, dim=0).numpy()
 
+    xg_mesh, yg_mesh, sigma_vector, n_points_axis = None, None, None, None
     if use_var_decoder:
         # Grid for probability map
         n_points_axis = 50
@@ -213,36 +215,13 @@ def test_vae(dataset, batch_size=1, use_var_decoder=False):
     # create figures
     if not os.path.isdir(f"../figures/{path}"): os.makedirs(f"../figures/{path}")
 
-    plt.figure()
-    if dataset == "mnist":
-        for yi in np.unique(labels):
-            idx = labels == yi
-            plt.plot(z_mu[idx, 0], z_mu[idx, 1], 'x', ms=5.0, alpha=1.0)
-    else:
-        plt.plot(z_mu[:, 0], z_mu[:, 1], 'x', ms=5.0, alpha=1.0)
-
-    if use_var_decoder:
-        precision_grid = np.reshape(sigma_vector, (n_points_axis, n_points_axis))
-        plt.contourf(xg_mesh, yg_mesh, precision_grid, cmap='viridis_r')
-        plt.colorbar()
-
-    plt.savefig(f"../figures/{path}/vae_contour.png")
-    plt.close(); plt.cla()
+    if dataset != "mnist":
+        labels = None
+        
+    plot_latent_space(path, z_mu, labels, xg_mesh, yg_mesh, sigma_vector, n_points_axis)
 
     if dataset == "mnist":
-        for i in range(min(len(z_mu), 10)):
-            plt.figure()
-            plt.subplot(1,3,1)
-            plt.imshow(x[i].reshape(28,28))
-
-            plt.subplot(1,3,2)
-            plt.imshow(x_rec_mu[i].reshape(28,28))
-
-            plt.subplot(1,3,3)
-            plt.imshow(x_rec_sigma[i].reshape(28,28))
-
-            plt.savefig(f"../figures/{path}/vae_recon_{i}.png")
-            plt.close(); plt.cla()
+        plot_mnist_reconstructions(path, x, x_rec_mu, x_rec_sigma)
 
 
 def train_vae(dataset = "mnist", use_var_decoder=False):

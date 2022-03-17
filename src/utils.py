@@ -1,4 +1,5 @@
 import torch.nn.functional as F
+import dill
 
 
 def softclip(tensor, min):
@@ -6,3 +7,14 @@ def softclip(tensor, min):
     result_tensor = min + F.softplus(tensor - min)
 
     return result_tensor
+
+
+def save_laplace(la, filepath):
+    with open(filepath, 'wb') as outpt:
+        dill.dump(la, outpt)
+
+
+def load_laplace(filepath):
+    with open(filepath, 'rb') as inpt:
+        la = dill.load(inpt)
+    return la

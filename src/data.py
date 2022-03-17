@@ -1,21 +1,27 @@
 import torch
 import numpy as np
 from torch.utils.data import DataLoader, TensorDataset, random_split
-from torchvision.datasets import MNIST
+from torchvision.datasets import MNIST, KMNIST
 from torchvision import transforms
 
 
 def get_data(name, batch_size = 32):
-
+    
     if name == "mnist":
         dataset = MNIST('../', train=True, download=True, transform=transforms.ToTensor())
-        mnist_train, mnist_val = random_split(dataset, [55000, 5000])
+        mnist_train, mnist_val = random_split(dataset, [55000, 5000], generator=torch.Generator().manual_seed(42))
+        train_loader = DataLoader(mnist_train, batch_size=batch_size, pin_memory=True)
+        val_loader = DataLoader(mnist_val, batch_size=batch_size, pin_memory=True)
+
+    elif name == "kmnist":
+        dataset = KMNIST('../', train=True, download=True, transform=transforms.ToTensor())
+        mnist_train, mnist_val = random_split(dataset, [55000, 5000], generator=torch.Generator().manual_seed(42))
         train_loader = DataLoader(mnist_train, batch_size=batch_size, pin_memory=True)
         val_loader = DataLoader(mnist_val, batch_size=batch_size, pin_memory=True)
 
     elif name == "mnist_ae":
         dataset = MNIST_AE('../', train=True, download=True, transform=transforms.ToTensor())
-        mnist_train, mnist_val = random_split(dataset, [55000, 5000])
+        mnist_train, mnist_val = random_split(dataset, [55000, 5000], generator=torch.Generator().manual_seed(42))
         train_loader = DataLoader(mnist_train, batch_size=batch_size, pin_memory=True)
         val_loader = DataLoader(mnist_val, batch_size=batch_size, pin_memory=True)
 

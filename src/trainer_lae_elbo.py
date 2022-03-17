@@ -4,21 +4,19 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from tqdm import tqdm
-import numpy as np
 import time
-import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from datetime import datetime
 from data import get_data, generate_latent_grid
-from ae_models import get_encoder, get_decoder
-from utils import softclip
+from models.ae_models import get_encoder, get_decoder
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from copy import deepcopy
 import torchvision
 import yaml
 import argparse
+from visualizer import plot_mnist_reconstructions, plot_latent_space, plot_latent_space_ood, plot_ood_distributions
 
 
 def sample(parameters, posterior_scale, n_samples=100):
@@ -208,11 +206,6 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         self.log('sigma_q/mean', torch.mean(sigma_q))
         self.log('sigma_q/median', torch.median(sigma_q))
 
-        self.log('ratio_weight_sigma_q/max', torch.max(ratio))
-        self.log('ratio_weight_sigma_q/min', torch.min(ratio))
-        self.log('ratio_weight_sigma_q/mean', torch.mean(ratio))
-        self.log('ratio_weight_sigma_q/median', torch.median(ratio))
-
         # log images
         if self.current_epoch > self.last_epoch_logged:
             img_grid = torch.clamp(torchvision.utils.make_grid(x[:4].view(-1, 1, 28, 28)),0, 1)
@@ -248,34 +241,14 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             self.last_epoch_logged_val += 1
 
 
-def test_lae(config, batch_size=1):
-
-    # initialize_model
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    path = f"{config['dataset']}/lae_elbo"
-
-    latent_size = 2
-    encoder = get_encoder(config['dataset'], latent_size)
-    decoder = get_decoder(config['dataset'], latent_size)
-
-    net = get_model(encoder, decoder).eval().to(device)
-    net.load_state_dict(torch.load(f"../weights/{path}/net.pth"))
-
-    h = torch.load(f"../weights/{path}/hessian.pth")
-    sigma_q = 1 / (h + 1e-6)
-    
-    # draw samples from the nn (sample nn)
-    mu_q = parameters_to_vector(net.parameters())
-    samples = sample(mu_q, sigma_q, n_samples=config["test_samples"])
+def inference_on_dataset(net, samples, val_loader):
+    device = net[-1].weight.device
 
     z_i = []
     def fw_hook_get_latent(module, input, output):
         z_i.append(output.detach().cpu())    
     hook = net[4].register_forward_hook(fw_hook_get_latent)
-
-    train_loader, val_loader = get_data(config['dataset'], batch_size)
-
-    # forward eval
+    
     x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = [], [], [], [], [], []
     for i, (xi, yi) in tqdm(enumerate(val_loader)):
         xi = xi.view(xi.size(0), -1).to(device)
@@ -316,6 +289,12 @@ def test_lae(config, batch_size=1):
 
     # remove forward hook
     hook.remove()
+
+    return x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels
+
+
+def inference_on_latent_grid(net, samples, z_mu):
+    device = net[-1].weight.device
 
     # Grid for probability map
     n_points_axis = 50
@@ -362,40 +341,58 @@ def test_lae(config, batch_size=1):
     # get diagonal elements
     sigma_vector = f_sigma.mean(axis=1)
 
+    replace_hook.remove()
+
+    return xg_mesh, yg_mesh, sigma_vector, n_points_axis
+
+
+def test_lae(config, batch_size=1):
+
+    # initialize_model
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    path = f"{config['dataset']}/lae_elbo"
+
+    latent_size = 2
+    encoder = get_encoder(config['dataset'], latent_size)
+    decoder = get_decoder(config['dataset'], latent_size)
+
+    net = get_model(encoder, decoder).eval().to(device)
+    net.load_state_dict(torch.load(f"../weights/{path}/net.pth"))
+
+    h = torch.load(f"../weights/{path}/hessian.pth")
+    sigma_q = 1 / (h + 1e-6)
+    
+    # draw samples from the nn (sample nn)
+    mu_q = parameters_to_vector(net.parameters())
+    samples = sample(mu_q, sigma_q, n_samples=config["test_samples"])
+
+    _, val_loader = get_data(config['dataset'], batch_size)
+    _, ood_val_loader = get_data(config['ood_dataset'], batch_size)
+
+    # evaluate on dataset
+    x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = inference_on_dataset(net, samples, val_loader)
+    
+    # evaluate on latent grid representation
+    xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(net, samples, z_mu)
+
+    # evaluate on OOD dataset
+    ood_x, ood_z_mu, ood_z_sigma, ood_x_rec_mu, ood_x_rec_sigma, ood_labels = inference_on_dataset(net, samples, ood_val_loader)
+    
     # create figures
     if not os.path.isdir(f"../figures/{path}"): os.makedirs(f"../figures/{path}")
 
-    plt.figure()
-    if config["dataset"] == "mnist":
-        for yi in np.unique(labels):
-            idx = labels == yi
-            plt.plot(z_mu[idx, 0], z_mu[idx, 1], 'x', ms=5.0, alpha=1.0)
-    else:
-        plt.plot(z_mu[:, 0], z_mu[:, 1], 'x', ms=5.0, alpha=1.0)
+    if config["dataset"] != "mnist":
+        labels = None
 
-    precision_grid = np.reshape(sigma_vector, (n_points_axis, n_points_axis))
-    plt.contourf(xg_mesh, yg_mesh, precision_grid, cmap='viridis_r')
-    plt.colorbar()
-
-    plt.savefig(f"../figures/{path}/ae_contour.png")
-    plt.close(); plt.cla()
+    plot_latent_space(path, z_mu, labels, xg_mesh, yg_mesh, sigma_vector, n_points_axis)
 
     if config["dataset"] == "mnist":
-        for i in range(min(len(z_mu), 10)):
-            nplots = 3
-            plt.figure()
-            plt.subplot(1,nplots,1)
-            plt.imshow(x[i].reshape(28,28))
+        plot_mnist_reconstructions(path, x, x_rec_mu, x_rec_sigma)
+    if config["ood_dataset"] == "kmnist":
+        plot_mnist_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
 
-            plt.subplot(1,nplots,2)
-            plt.imshow(x_rec_mu[i].reshape(28,28))
-
-            plt.subplot(1,nplots,3)
-            plt.imshow(x_rec_sigma[i].reshape(28,28))
-
-            plt.savefig(f"../figures/{path}/lae_elbo_recon_{i}.png")
-            plt.close(); plt.cla()
-
+    plot_latent_space_ood(path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels)
+    plot_ood_distributions(path, z_sigma, ood_z_sigma, x_rec_sigma, ood_x_rec_sigma)
 
 def train_lae(config):
 
@@ -428,7 +425,7 @@ def train_lae(config):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default="../configs/trainer_lae_elbo.yaml",
+    parser.add_argument('--config', type=str, default="../configs/lae_elbo.yaml",
                         help='path to config you want to use')
     args = parser.parse_args()
 

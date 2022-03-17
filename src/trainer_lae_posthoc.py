@@ -21,21 +21,9 @@ from laplace.laplace import Laplace
 from laplace.utils import ModuleNameSubnetMask
 #from laplace import Laplace
 from data import get_data, generate_latent_grid
-from ae_models import get_encoder, get_decoder
-from laplace.curvature import BackPackGGN, BackPackEF, AsdlGGN, AsdlEF
-
-import dill
-
-
-def save_laplace(la, filepath):
-    with open(filepath, 'wb') as outpt:
-        dill.dump(la, outpt)
-
-
-def load_laplace(filepath):
-    with open(filepath, 'rb') as inpt:
-        la = dill.load(inpt)
-    return la
+from models.ae_models import get_encoder, get_decoder
+from utils import save_laplace, load_laplace
+from visualizer import plot_mnist_reconstructions, plot_latent_space
 
 
 def test_lae_decoder(dataset, batch_size=1, use_var_decoder=False):    
@@ -55,7 +43,7 @@ def test_lae_decoder(dataset, batch_size=1, use_var_decoder=False):
     pred_type =  "nn"
 
     # forward eval la
-    x, z_list, labels, mu_rec, sigma_rec = [], [], [], [], []
+    x, z_list, labels, x_rec_mu, x_rec_sigma = [], [], [], [], []
     for i, (X, y) in tqdm(enumerate(val_loader)):
         t0 = time.time()
         with torch.no_grad():
@@ -65,8 +53,8 @@ def test_lae_decoder(dataset, batch_size=1, use_var_decoder=False):
             
             mu, var = la(z, pred_type = pred_type, return_latent_representation=False)
 
-            mu_rec += [mu.detach()]
-            sigma_rec += [var.sqrt()]
+            x_rec_mu += [mu.detach()]
+            x_rec_sigma += [var.sqrt()]
 
             x += [X]
             labels += [y]
@@ -79,8 +67,8 @@ def test_lae_decoder(dataset, batch_size=1, use_var_decoder=False):
     x = torch.cat(x, dim=0).cpu().numpy()
     labels = torch.cat(labels, dim=0).numpy()
     z = torch.cat(z_list, dim=0).cpu().numpy()
-    mu_rec = torch.cat(mu_rec, dim=0).cpu().numpy()
-    sigma_rec = torch.cat(sigma_rec, dim=0).cpu().numpy()
+    x_rec_mu = torch.cat(x_rec_mu, dim=0).cpu().numpy()
+    x_rec_sigma = torch.cat(x_rec_sigma, dim=0).cpu().numpy()
 
     # Grid for probability map
     n_points_axis = 50
@@ -113,36 +101,13 @@ def test_lae_decoder(dataset, batch_size=1, use_var_decoder=False):
     # create figures
     if not os.path.isdir(f"../figures/{path}"): os.makedirs(f"../figures/{path}")
 
-    plt.figure()
-    if dataset == "mnist":
-        for yi in np.unique(labels):
-            idx = labels == yi
-            plt.plot(z[idx, 0], z[idx, 1], 'x', ms=5.0, alpha=1.0)
-    else:
-        plt.plot(z[:, 0], z[:, 1], 'wx', ms=5.0, alpha=1.0)
-    precision_grid = np.reshape(sigma_vector, (n_points_axis, n_points_axis))
-    plt.contourf(xg_mesh, yg_mesh, precision_grid, cmap='viridis_r')
-    plt.colorbar()
-    plt.savefig(f"../figures/{path}/contour.png")
-    plt.close(); plt.cla()
+    if config["dataset"] != "mnist":
+        labels = None
 
-    if dataset == "mnist":
-        for i in range(min(len(z), 10)):
-            plt.figure()
-            plt.subplot(1,3,1)
+    plot_latent_space(path, z, labels, xg_mesh, yg_mesh, sigma_vector, n_points_axis)
 
-            plt.imshow(x[i].reshape(28,28))
-
-            plt.subplot(1,3,2)
-            plt.imshow(mu_rec[i].reshape(28,28))
-
-            plt.subplot(1,3,3)
-            N = 784 
-            sigma = sigma_rec[i] if pred_type == "nn" else sigma_rec[i][np.arange(N), np.arange(N)]
-            plt.imshow(sigma.reshape(28,28))
-
-            plt.savefig(f"../figures/{path}/recon_{i}.png")
-            plt.close(); plt.cla()
+    if config["dataset"] == "mnist":
+        plot_mnist_reconstructions(path, x, x_rec_mu, x_rec_sigma)
 
 
 def test_lae_encoder_decoder(dataset, batch_size=1, use_var_decoder=False):    
@@ -266,7 +231,6 @@ def test_lae(dataset, batch_size=1, use_var_decoder=False, use_la_enc=False):
     else:
         test_lae_decoder(dataset, batch_size, use_var_decoder)
 
-
 def fit_laplace_to_decoder(encoder, decoder, dataset, batch_size):            
 
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -304,7 +268,6 @@ def fit_laplace_to_decoder(encoder, decoder, dataset, batch_size):
     if not os.path.isdir(path): os.makedirs(path)
     save_laplace(la, f"{path}/decoder.pkl")
 
-
 def fit_laplace_to_enc_and_dec(encoder, decoder, dataset, batch_size):            
 
     train_loader, val_loader = get_data("mnist_ae", batch_size)
@@ -340,7 +303,6 @@ def fit_laplace_to_enc_and_dec(encoder, decoder, dataset, batch_size):
     path = f"../weights/{dataset}/lae_[use_var_dec={use_var_decoder}]_[use_la_enc=True]"
     if not os.path.isdir(path): os.makedirs(path)
     save_laplace(la, f"{path}/ae.pkl")
-
 
 def train_lae(dataset="mnist", n_epochs=50, batch_size=32, use_var_decoder=False, use_la_encoder=False):
 

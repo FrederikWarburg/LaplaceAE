@@ -4,14 +4,14 @@ from torch import nn
 from torch.nn import functional as F
 from tqdm import tqdm
 import numpy as np
-from torch.utils.data import DataLoader, TensorDataset
+
 import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-
+from visualizer import plot_mnist_reconstructions, plot_latent_space
 from data import get_data, generate_latent_grid
-from ae_models import get_encoder, get_decoder
+from models.ae_models import get_encoder, get_decoder
 
 
 def apply_dropout(m):
@@ -58,19 +58,20 @@ class LitDropoutAutoEncoder(pl.LightningModule):
         self.log('val_loss', loss)
 
 
-def test_mcdropout_ae(dataset, batch_size=1):
+def test_mcdropout_ae(config, batch_size=1):
 
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    path = f"{config['dataset']}/ae_dropout"
     
     latent_size = 2
     encoder = get_encoder(dataset, latent_size, dropout=True).eval().to(device)
-    encoder.load_state_dict(torch.load(f"../weights/{dataset}/mcdropout_ae/encoder.pth"))
+    encoder.load_state_dict(torch.load(f"../weights/{config['dataset']}/mcdropout_ae/encoder.pth"))
 
     decoder = get_decoder(dataset, latent_size, dropout=True).eval().to(device)
-    decoder.load_state_dict(torch.load(f"../weights/{dataset}/mcdropout_ae/decoder.pth"))
+    decoder.load_state_dict(torch.load(f"../weights/{config['dataset']}/mcdropout_ae/decoder.pth"))
 
-    train_loader, val_loader = get_data(dataset, batch_size)
+    train_loader, val_loader = get_data(config['dataset'], batch_size)
 
     # number of mc samples
     N = 30
@@ -181,37 +182,15 @@ def test_mcdropout_ae(dataset, batch_size=1):
     sigma_vector = f_sigma.mean(axis=1)
 
     # create figures
-    if not os.path.isdir(f"../figures/{dataset}/mcdropout_ae/"): os.makedirs(f"../figures/{dataset}/mcdropout_ae/")
+    if not os.path.isdir(f"../figures/{path}/"): os.makedirs(f"../figures/{path}/")
 
-    plt.figure()
-    if dataset == "mnist":
-        for yi in np.unique(labels):
-            idx = labels == yi
-            plt.plot(z_mu[idx, 0], z_mu[idx, 1], 'x', ms=5.0, alpha=1.0)
-    else:
-        plt.plot(z_mu[:, 0], z_mu[:, 1], 'x', ms=5.0, alpha=1.0)
+    if dataset != "mnist":
+        labels = None
 
-    precision_grid = np.reshape(sigma_vector, (n_points_axis, n_points_axis))
-    plt.contourf(xg_mesh, yg_mesh, precision_grid, cmap='viridis_r')
-    plt.colorbar()
-
-    plt.savefig(f"../figures/{dataset}/mcdropout_ae/mcdropout_ae_contour.png")
-    plt.close(); plt.cla()
+    plot_latent_space(path, z_mu, labels, xg_mesh, yg_mesh, sigma_vector, n_points_axis)
 
     if dataset == "mnist":
-        for i in range(min(len(z_mu), 10)):
-            plt.figure()
-            plt.subplot(1,3,1)
-            plt.imshow(x[i].reshape(28,28))
-
-            plt.subplot(1,3,2)
-            plt.imshow(x_rec_mu[i].reshape(28,28))
-
-            plt.subplot(1,3,3)
-            plt.imshow(x_rec_sigma[i].reshape(28,28))
-
-            plt.savefig(f"../figures/{dataset}/mcdropout_ae/mcdropout_ae_recon_{i}.png")
-            plt.close(); plt.cla()
+        plot_mnist_reconstructions(path, x, x_rec_mu, x_rec_sigma)
 
 
 def train_mcdropout_ae(dataset = "mnist"):

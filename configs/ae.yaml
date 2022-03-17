@@ -1,0 +1,13 @@
+
+# training
+train : False
+
+# test
+
+# data
+dataset : "mnist"
+ood_dataset : "kmnist"
+batch_size: 128
+    
+# model
+use_var_decoder : False

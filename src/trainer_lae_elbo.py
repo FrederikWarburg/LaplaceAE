@@ -335,13 +335,15 @@ def inference_on_latent_grid(net, samples, z_mu):
         all_f_mu += [mu_rec_grid.cpu()]
         all_f_sigma += [sigma_rec_grid.cpu()]
 
+        replace_hook.remove()
+
     f_mu = torch.stack(all_f_mu)
     f_sigma = torch.stack(all_f_sigma)
 
     # get diagonal elements
     sigma_vector = f_sigma.mean(axis=1)
 
-    replace_hook.remove()
+    
 
     return xg_mesh, yg_mesh, sigma_vector, n_points_axis
 
@@ -372,12 +374,12 @@ def test_lae(config, batch_size=1):
     # evaluate on dataset
     x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = inference_on_dataset(net, samples, val_loader)
     
-    # evaluate on latent grid representation
-    xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(net, samples, z_mu)
-
     # evaluate on OOD dataset
     ood_x, ood_z_mu, ood_z_sigma, ood_x_rec_mu, ood_x_rec_sigma, ood_labels = inference_on_dataset(net, samples, ood_val_loader)
-    
+
+    # evaluate on latent grid representation
+    xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(deepcopy(net), samples, z_mu)
+
     # create figures
     if not os.path.isdir(f"../figures/{path}"): os.makedirs(f"../figures/{path}")
 

@@ -1,6 +1,3 @@
-from builtins import breakpoint
-from cProfile import label
-from turtle import width
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -33,14 +30,18 @@ def plot_mnist_reconstructions(path, x, x_rec_mu, x_rec_sigma = None, pre_fix = 
         plt.figure()
         plt.subplot(1,nplots,1)
         plt.imshow(x[i].reshape(28,28))
+        plt.axis("off")
 
         plt.subplot(1,nplots,2)
         plt.imshow(x_rec_mu[i].reshape(28,28))
+        plt.axis("off")
 
         if x_rec_sigma is not None:
             plt.subplot(1,nplots,3)
             plt.imshow(x_rec_sigma[i].reshape(28,28))
-
+            plt.axis("off")
+        
+        plt.tight_layout()
         plt.savefig(f"../figures/{path}/{pre_fix}recon_{i}.png")
         plt.close(); plt.cla()
 
@@ -71,7 +72,7 @@ def plot_latent_space_ood(path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, oo
         ax.add_patch(ellipse)
 
         if i > 500:
-            ax.scatter(z_mu_i[0], z_mu_i[1], color="b", label="OOD")
+            ax.scatter(z_mu_i[0], z_mu_i[1], color="r", label="OOD")
             break
 
     ax.legend()
@@ -79,26 +80,27 @@ def plot_latent_space_ood(path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, oo
 
 
 def plot_ood_distributions(path, z_sigma, ood_z_sigma, x_rec_sigma, ood_x_rec_sigma):
-    breakpoint()
-    z_sigma = np.sum(z_sigma, axis=1)
-    ood_z_sigma = np.sum(ood_z_sigma, axis=1)
+    
+    if z_sigma is not None:
+        z_sigma = np.sum(z_sigma, axis=1)
+        ood_z_sigma = np.sum(ood_z_sigma, axis=1)
+        z = pd.DataFrame(np.concatenate([z_sigma[:, None], ood_z_sigma[:, None]],axis=1), columns=['id', 'ood'])
+        
+        fig, ax = plt.subplots(1, 1, figsize=(9, 9))
+        for col in ['id', 'ood']:
+            sns.kdeplot(z[col], shade=True, label=col)
+        plt.legend()
+        fig.savefig(f"../figures/{path}/ood_z_sigma_distribution.png")
+        plt.cla(); plt.close();
 
-    x_rec_sigma = np.sum(x_rec_sigma, axis=1)
-    ood_x_rec_sigma = np.sum(ood_x_rec_sigma, axis=1)
+    if x_rec_sigma is not None:
+        x_rec_sigma = np.sum(x_rec_sigma, axis=1)
+        ood_x_rec_sigma = np.sum(ood_x_rec_sigma, axis=1)
+        x_rec = pd.DataFrame(np.concatenate([x_rec_sigma[:, None], ood_x_rec_sigma[:, None]],axis=1), columns=['id', 'ood'])
 
-    z = pd.DataFrame(np.concatenate([z_sigma[:, None], ood_z_sigma[:, None]],axis=1), columns=['id', 'ood'])
-    x_rec = pd.DataFrame(np.concatenate([x_rec_sigma[:, None], ood_x_rec_sigma[:, None]],axis=1), columns=['id', 'ood'])
-
-    fig, ax = plt.subplots(1, 1, figsize=(9, 9))
-    for col in ['id', 'ood']:
-        sns.kdeplot(z[col], shade=True, label=col)
-    plt.legend()
-    fig.savefig(f"../figures/{path}/ood_z_sigma_distribution.png")
-    plt.cla(); plt.close();
-
-    fig, ax = plt.subplots(1, 1, figsize=(9, 9))
-    for col in ['id', 'ood']:
-        sns.kdeplot(x_rec[col], shade=True, label=col)
-    plt.legend()
-    fig.savefig(f"../figures/{path}/ood_x_rec_sigma_distribution.png")
-    plt.cla(); plt.close();
+        fig, ax = plt.subplots(1, 1, figsize=(9, 9))
+        for col in ['id', 'ood']:
+            sns.kdeplot(x_rec[col], shade=True, label=col)
+        plt.legend()
+        fig.savefig(f"../figures/{path}/ood_x_rec_sigma_distribution.png")
+        plt.cla(); plt.close();

@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import math
 
 
-def get_encoder(dataset, latent_size=2, dropout=False):
+def get_encoder(dataset, latent_size=2, dropout=0):
 
     if dataset == "mnist":
         encoder = Encoder_mnist(latent_size, dropout)
@@ -24,7 +24,7 @@ def get_encoder(dataset, latent_size=2, dropout=False):
     return encoder
 
 
-def get_decoder(dataset, latent_size=2, dropout=False):
+def get_decoder(dataset, latent_size=2, dropout=0):
 
     if dataset == "mnist":
         decoder = Decoder_mnist(latent_size, dropout)
@@ -41,12 +41,11 @@ class Encoder_swissrole(nn.Module):
         super(Encoder_swissrole, self).__init__()
         self.latent_size = latent_size
         self.dropout = dropout
-        self.p = 0.5
 
-        if self.dropout:
+        if self.dropout > 0:
             # for mc dropout we need to include dropout in our model
             self.encoder = nn.Sequential(nn.Linear(2, 50),
-                                    nn.Dropout(p=self.p),
+                                    nn.Dropout(p=dropout),
                                     nn.Tanh(),
                                     nn.Linear(50, latent_size))
         else:
@@ -64,12 +63,11 @@ class Decoder_swissrole(nn.Module):
         
         self.latent_size = latent_size
         self.dropout = dropout
-        self.p = 0.5
 
-        if self.dropout:
+        if self.dropout > 0:
             # for mc dropout we need to include dropout in our model
             self.decoder = nn.Sequential(nn.Linear(latent_size, 50),
-                                        nn.Dropout(p=self.p),
+                                        nn.Dropout(p=dropout),
                                         nn.Tanh(),
                                         nn.Linear(50, 2))
         else:
@@ -85,16 +83,15 @@ class Encoder_mnist(nn.Module):
         super(Encoder_mnist, self).__init__()
         self.latent_size = latent_size
         self.dropout = dropout
-        self.p = 0.5
 
-        if self.dropout:
+        if self.dropout > 0:
             # for mc dropout we need to include dropout in our model
             self.encoder = nn.Sequential(
                 nn.Linear(784, 512),
-                nn.Dropout(p=self.p),
+                nn.Dropout(p=dropout),
                 nn.Tanh(),
                 nn.Linear(512, 256),
-                nn.Dropout(p=self.p),
+                nn.Dropout(p=dropout),
                 nn.Tanh(),
                 nn.Linear(256, latent_size),
             )
@@ -116,16 +113,15 @@ class Decoder_mnist(nn.Module):
         super(Decoder_mnist, self).__init__()
         self.latent_size = latent_size
         self.dropout = dropout
-        self.p = 0.5
 
-        if self.dropout:
+        if self.dropout > 0:
             # for mc dropout we need to include dropout in our model
             self.decoder = nn.Sequential(
                 nn.Linear(latent_size, 256),
-                nn.Dropout(p=self.p),
+                nn.Dropout(p=dropout),
                 nn.Tanh(),
                 nn.Linear(256, 512),
-                nn.Dropout(p=self.p),
+                nn.Dropout(p=dropout),
                 nn.Tanh(),
                 nn.Linear(512, 784)
             )

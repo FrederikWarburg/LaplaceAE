@@ -48,7 +48,12 @@ def get_data(name, batch_size = 32):
     return train_loader, val_loader
 
 
-def generate_latent_grid(x_min, x_max, y_min, y_max, n_points_axis=50, batch_size=1):
+def generate_latent_grid(x, n_points_axis=50, batch_size=1):
+
+    x_min = x[:, 0].min()
+    x_max = x[:, 0].max()
+    y_min = x[:, 1].min()
+    y_max = x[:, 1].max()
 
     x_margin = (x_max - x_min)*0.3
     y_margin = (x_max - x_min)*0.3

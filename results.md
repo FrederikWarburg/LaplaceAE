@@ -7,6 +7,8 @@ Models:
   - MSE
   - NLL
 - VAE
+  - Sampling
+  - Variance decoder
 - AE dropout
 - LAE post hoc
   - decoder only
@@ -262,6 +264,48 @@ Metrics:
 
 ## AE [MC-DROPOUT]
 
+<table>
+  <tr>
+    <td>Encoder uncertainties</td>
+     <td>Decoder uncertainties</td>
+  </tr>
+  <tr>
+   <td><img src="figures/mnist/ae_dropout/ood_latent_space.png">
+    <td><img src="figures/mnist/ae_dropout/ae_contour.png"></td>
+    </td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_dropout/ood_z_sigma_distribution.png"></td>
+    <td><img src="figures/mnist/ae_dropout/ood_x_rec_sigma_distribution.png"></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td>In distribution</td>
+     <td>Out-of-distribution</td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_dropout/recon_0.png"></td>
+    <td><img src="figures/mnist/ae_dropout/ood_recon_0.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_dropout/recon_1.png"></td>
+    <td><img src="figures/mnist/ae_dropout/ood_recon_1.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_dropout/recon_2.png"></td>
+    <td><img src="figures/mnist/ae_dropout/ood_recon_2.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_dropout/recon_3.png"></td>
+    <td><img src="figures/mnist/ae_dropout/ood_recon_3.png"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/mnist/ae_dropout/recon_4.png"></td>
+    <td><img src="figures/mnist/ae_dropout/ood_recon_4.png"></td>
+  </tr>
+ </table>
 
 ## VAE [Sampling]
 

@@ -1,3 +1,4 @@
+from builtins import breakpoint
 import os
 import torch
 from torch import nn
@@ -12,24 +13,26 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from data import get_data, generate_latent_grid
 from models.ae_models import get_encoder, get_decoder
 from utils import softclip
+import yaml
+import argparse
 from visualizer import plot_mnist_reconstructions, plot_latent_space, plot_latent_space_ood, plot_ood_distributions
 
 class LitVariationalAutoEncoder(pl.LightningModule):
-    def __init__(self, dataset, use_var_decoder):
+    def __init__(self, config):
         super().__init__()
 
         # scaling of kl term
-        self.alpha = 1e-4
-        self.use_var_decoder = use_var_decoder
+        self.alpha = config["kl_weight"]
+        self.use_var_decoder = config["use_var_decoder"]
 
         latent_size = 2
-        self.mu_encoder = get_encoder(dataset, latent_size)
-        self.var_encoder = get_encoder(dataset, latent_size)
+        self.mu_encoder = get_encoder(config["dataset"], latent_size)
+        self.var_encoder = get_encoder(config["dataset"], latent_size)
 
-        self.mu_decoder = get_decoder(dataset, latent_size)
+        self.mu_decoder = get_decoder(config["dataset"], latent_size)
 
         if self.use_var_decoder:
-            self.var_decoder = get_decoder(dataset, latent_size)
+            self.var_decoder = get_decoder(config["dataset"], latent_size)
 
     def forward(self, x):
         mean = self.mu_encoder(x)
@@ -89,7 +92,7 @@ class LitVariationalAutoEncoder(pl.LightningModule):
 
         # kl term
         kl = -0.5 * torch.sum(1 + torch.log(z_sigma**2) - z_mu**2 - z_sigma**2)
-
+        
         self.log('val_loss', rec + self.alpha * kl)
         self.log('val_reconstruciton_loss', rec)
         self.log('val_kl_loss', kl)
@@ -106,7 +109,7 @@ def inference_on_dataset(mu_encoder, var_encoder, mu_decoder, var_decoder, val_l
             z_log_sigma_i = softclip(var_encoder(xi), min=-3)
             z_sigma_i = torch.exp(z_log_sigma_i)
 
-            if use_var_decoder:
+            if var_decoder is not None:
                 
                 # sample from distribution
                 zi = z_mu_i + torch.randn_like(z_sigma_i) * z_sigma_i
@@ -214,6 +217,8 @@ def test_vae(config):
     if config['use_var_decoder']:
         var_decoder = get_decoder(config["dataset"], latent_size).eval().to(device)
         var_decoder.load_state_dict(torch.load(f"../weights/{path}/var_decoder.pth"))
+    else:
+        var_decoder = None
 
     _, val_loader = get_data(config["dataset"], config["batch_size"])
     _, ood_val_loader = get_data(config["ood_dataset"], config["batch_size"])
@@ -223,7 +228,7 @@ def test_vae(config):
     ood_x, ood_z_mu, ood_z_sigma, ood_x_rec_mu, ood_x_rec_sigma, ood_labels = inference_on_dataset(mu_encoder, var_encoder, mu_decoder, var_decoder, ood_val_loader, device)
     
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = None, None, None, None
-    if use_var_decoder:
+    if config["use_var_decoder"]:
         xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(mu_decoder, var_decoder, z_mu, device)
 
     # create figures
@@ -237,19 +242,19 @@ def test_vae(config):
     if config["dataset"] == "mnist":
         plot_mnist_reconstructions(path, x, x_rec_mu, x_rec_sigma)
     if config["ood_dataset"] == "kmnist":
-        plot_mnist_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma)
+        plot_mnist_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
 
     plot_latent_space_ood(path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels)
     plot_ood_distributions(path, z_sigma, ood_z_sigma, x_rec_sigma, ood_x_rec_sigma)
 
 
-def train_vae(dataset = "mnist", use_var_decoder=False):
+def train_vae(config):
 
     # data
-    train_loader, val_loader = get_data(dataset)
+    train_loader, val_loader = get_data(config["dataset"])
 
     # model
-    model = LitVariationalAutoEncoder(dataset, use_var_decoder)
+    model = LitVariationalAutoEncoder(config)
 
     # default logger used by trainer
     logger = TensorBoardLogger(save_dir="../", version=1, name="lightning_logs")
@@ -264,24 +269,28 @@ def train_vae(dataset = "mnist", use_var_decoder=False):
     trainer.fit(model, train_loader, val_loader)
     
     # save weights
-    path = f"{dataset}/vae_[use_var_dec={use_var_decoder}]"
+    path = f"{config['dataset']}/vae_[use_var_dec={config['use_var_decoder']}]"
     if not os.path.isdir(f"../weights/{path}"): os.makedirs(f"../weights/{path}")
     torch.save(model.mu_encoder.state_dict(), f"../weights/{path}/mu_encoder.pth")
     torch.save(model.var_encoder.state_dict(), f"../weights/{path}/var_encoder.pth")
     torch.save(model.mu_decoder.state_dict(), f"../weights/{path}/mu_decoder.pth")
-    if use_var_decoder:
+    if config['use_var_decoder']:
         torch.save(model.var_decoder.state_dict(), f"../weights/{path}/var_decoder.pth")
 
 if __name__ == "__main__":
 
-    dataset = "mnist"
-    train = True
-    use_var_decoder = False
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, default="../configs/vae.yaml",
+                        help='path to config you want to use')
+    args = parser.parse_args()
+
+    with open(args.config) as file:
+        config = yaml.full_load(file)
 
     # train or load auto encoder
-    if train:
-        train_vae(dataset, use_var_decoder=use_var_decoder)
+    if config["train"]:
+        train_vae(config)
 
-    test_vae(dataset, use_var_decoder=use_var_decoder)
+    test_vae(config)
 
     

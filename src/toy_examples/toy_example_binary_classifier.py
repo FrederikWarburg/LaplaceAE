@@ -1,4 +1,3 @@
-
 from builtins import breakpoint
 import numpy as np
 import matplotlib.pyplot as plt
@@ -7,10 +6,12 @@ import torch
 import numpy as np
 from torch.utils.data import DataLoader, TensorDataset, random_split
 import sys
+
 sys.path.append("../../Laplace")
-from laplace.laplace import Laplace 
+from laplace.laplace import Laplace
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from ..utils import save_laplace, load_laplace
+
 
 def create_dataset():
 
@@ -26,28 +27,29 @@ def create_dataset():
     y = torch.cat([y, 1 - y], dim=1)
 
     os.makedirs("../../figures/toy_example", exist_ok=True)
-    plt.plot(X[y[:,0]==0,0], X[y[:,0]==0,1], "ro")
-    plt.plot(X[y[:,0]==1,0], X[y[:,0]==1,1], "bo")
+    plt.plot(X[y[:, 0] == 0, 0], X[y[:, 0] == 0, 1], "ro")
+    plt.plot(X[y[:, 0] == 1, 0], X[y[:, 0] == 1, 1], "bo")
     plt.savefig("../../figures/toy_example/data.png")
-    plt.cla(); plt.close();
+    plt.cla()
+    plt.close()
     print(X.shape, y.shape)
 
     dataloader = DataLoader(TensorDataset(X, y), batch_size=32, pin_memory=True)
 
     return dataloader
 
+
 def create_model():
 
     model = torch.nn.Sequential(
-        torch.nn.Linear(2, 10), 
-        torch.nn.Tanh(), 
-        torch.nn.Linear(10, 2)
+        torch.nn.Linear(2, 10), torch.nn.Tanh(), torch.nn.Linear(10, 2)
     )
 
     return model
 
+
 def train_classifier(dataset, model):
-    
+
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
@@ -66,15 +68,16 @@ def train_classifier(dataset, model):
             total += y.size(0)
             correct += (predicted == y[:, 1]).sum().item()
 
-        print(epoch, loss, correct/total )
+        print(epoch, loss, correct / total)
 
     # save weights
-    path = '../../weights/toy_example/classifier.pth'
+    path = "../../weights/toy_example/classifier.pth"
     os.makedirs("../../weights/toy_example", exist_ok=True)
     torch.save(model.state_dict(), path)
 
+
 def eval_classifier(dataset, model):
-    
+
     total, correct = 0, 0
     for X, y in dataset:
 
@@ -90,24 +93,27 @@ def eval_classifier(dataset, model):
 
         plt.plot(X[idx, 0], X[idx, 1], "b.")
         plt.plot(X[~idx, 0], X[~idx, 1], "r.")
-        
+
     print(correct / total)
     plt.savefig("../../figures/toy_example/predictions.png")
-    plt.cla(); plt.close();
+    plt.cla()
+    plt.close()
+
 
 def load_model(model):
 
-    path = '../../weights/toy_example/classifier.pth'
+    path = "../../weights/toy_example/classifier.pth"
     statedict = torch.load(path)
     model.load_state_dict(statedict)
     return model
 
+
 def compute_hessian_laplace_redux(model, dataloader):
 
     la = Laplace(
-        model, 
-        'classification', 
-        hessian_structure='diag', 
+        model,
+        "classification",
+        hessian_structure="diag",
         subset_of_weights="all",
     )
 
@@ -117,13 +123,16 @@ def compute_hessian_laplace_redux(model, dataloader):
 
     # save weights
     path = f"../../weights/toy_example/"
-    if not os.path.isdir(path): os.makedirs(path)
+    if not os.path.isdir(path):
+        os.makedirs(path)
     save_laplace(la, f"{path}/laplace.pkl")
 
     print(la.H)
-    plt.plot(la.H.numpy(), '-o')
+    plt.plot(la.H.numpy(), "-o")
     plt.savefig("../../figures/toy_example/h_laplace_redux.png")
-    plt.cla(); plt.close();
+    plt.cla()
+    plt.close()
+
 
 def compute_hessian_ours(dataloader, net):
     output_size = 2
@@ -133,14 +142,15 @@ def compute_hessian_ours(dataloader, net):
     counter = 0
 
     feature_maps = []
+
     def fw_hook_get_latent(module, input, output):
         feature_maps.append(output.detach())
 
     for k in range(len(net)):
         net[k].register_forward_hook(fw_hook_get_latent)
-        
+
     for x, y in dataloader:
-        
+
         feature_maps = []
         yhat = net(x)
 
@@ -152,10 +162,12 @@ def compute_hessian_ours(dataloader, net):
         with torch.no_grad():
             for k in range(len(net) - 1, -1, -1):
                 if isinstance(net[k], torch.nn.Linear):
-                    diag_elements = torch.diagonal(tmp,dim1=1,dim2=2)
+                    diag_elements = torch.diagonal(tmp, dim1=1, dim2=2)
                     feature_map_k2 = (feature_maps[k] ** 2).unsqueeze(1)
 
-                    h_k = torch.bmm(diag_elements.unsqueeze(2), feature_map_k2).view(bs, -1)
+                    h_k = torch.bmm(diag_elements.unsqueeze(2), feature_map_k2).view(
+                        bs, -1
+                    )
 
                     # has a bias
                     if net[k].bias is not None:
@@ -164,15 +176,20 @@ def compute_hessian_ours(dataloader, net):
                     H = [h_k] + H
 
                 elif isinstance(net[k], torch.nn.Tanh):
-                    J_tanh = torch.diag_embed(torch.ones(feature_maps[k+1].shape, device=x.device) - feature_maps[k+1]**2)
+                    J_tanh = torch.diag_embed(
+                        torch.ones(feature_maps[k + 1].shape, device=x.device)
+                        - feature_maps[k + 1] ** 2
+                    )
                     # TODO: make more efficent by using row vectors
-                    tmp = torch.einsum("bnm,bnj,bjk->bmk", J_tanh, tmp, J_tanh) 
+                    tmp = torch.einsum("bnm,bnj,bjk->bmk", J_tanh, tmp, J_tanh)
 
-                if k == 0:                
+                if k == 0:
                     break
 
                 if isinstance(net[k], torch.nn.Linear):
-                    tmp = torch.einsum("nm,bnj,jk->bmk", net[k].weight, tmp, net[k].weight) 
+                    tmp = torch.einsum(
+                        "nm,bnj,jk->bmk", net[k].weight, tmp, net[k].weight
+                    )
 
             counter += len(torch.cat(H, dim=1))
             H_running_sum += torch.cat(H, dim=1).sum(0)
@@ -183,16 +200,16 @@ def compute_hessian_ours(dataloader, net):
     final_H = 1 / counter * H_running_sum
     print(final_H)
 
-    plt.plot(final_H.numpy(), '-o')
+    plt.plot(final_H.numpy(), "-o")
     plt.savefig("../../figures/toy_example/h_ours.png")
-    plt.cla(); plt.close();
-                        
+    plt.cla()
+    plt.close()
+
     return final_H
 
 
 if __name__ == "__main__":
 
-    
     train = True
     laplace_redux = True
     laplace_ours = True

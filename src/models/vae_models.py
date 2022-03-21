@@ -29,18 +29,11 @@ class Encoder_swissrole(nn.Module):
         super(Encoder_swissrole, self).__init__()
         self.latent_size = latent_size
 
-        self.encoder = nn.Sequential(
-            nn.Linear(2, 50),
-            nn.Tanh()
-        )
+        self.encoder = nn.Sequential(nn.Linear(2, 50), nn.Tanh())
 
-        self.mu_head = nn.Sequential(
-            nn.Linear(50, latent_size)
-        )
+        self.mu_head = nn.Sequential(nn.Linear(50, latent_size))
 
-        self.log_var_head = nn.Sequential(
-            nn.Linear(50, latent_size)
-        )
+        self.log_var_head = nn.Sequential(nn.Linear(50, latent_size))
 
     def forward(self, x):
 
@@ -63,14 +56,10 @@ class Encoder_mnist(nn.Module):
             nn.Tanh(),
         )
 
-        self.mu_head = nn.Sequential(
-            nn.Linear(256, latent_size)
-        )
+        self.mu_head = nn.Sequential(nn.Linear(256, latent_size))
 
-        self.log_var_head = nn.Sequential(
-            nn.Linear(256, latent_size)
-        )
-        
+        self.log_var_head = nn.Sequential(nn.Linear(256, latent_size))
+
     def forward(self, x):
 
         embed = self.encoder(x)

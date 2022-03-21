@@ -9,7 +9,12 @@ import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-from visualizer import plot_mnist_reconstructions, plot_latent_space, plot_latent_space_ood, plot_ood_distributions
+from visualizer import (
+    plot_mnist_reconstructions,
+    plot_latent_space,
+    plot_latent_space_ood,
+    plot_ood_distributions,
+)
 from data import get_data, generate_latent_grid
 from models.ae_models import get_encoder, get_decoder
 import yaml
@@ -26,8 +31,12 @@ class LitDropoutAutoEncoder(pl.LightningModule):
         super().__init__()
 
         latent_size = 2
-        self.encoder = get_encoder(config["dataset"], latent_size, dropout=config["dropout_rate"])
-        self.decoder = get_decoder(config["dataset"], latent_size, dropout=config["dropout_rate"])
+        self.encoder = get_encoder(
+            config["dataset"], latent_size, dropout=config["dropout_rate"]
+        )
+        self.decoder = get_decoder(
+            config["dataset"], latent_size, dropout=config["dropout_rate"]
+        )
 
     def forward(self, x):
         embedding = self.encoder(x)
@@ -40,10 +49,10 @@ class LitDropoutAutoEncoder(pl.LightningModule):
     def training_step(self, train_batch, batch_idx):
         x, y = train_batch
         x = x.view(x.size(0), -1)
-        z = self.encoder(x)    
+        z = self.encoder(x)
         x_hat = self.decoder(z)
         loss = F.mse_loss(x_hat, x)
-        self.log('train_loss', loss)
+        self.log("train_loss", loss)
         return loss
 
     def validation_step(self, val_batch, batch_idx):
@@ -57,7 +66,7 @@ class LitDropoutAutoEncoder(pl.LightningModule):
         z = self.encoder(x)
         x_hat = self.decoder(z)
         loss = F.mse_loss(x_hat, x)
-        self.log('val_loss', loss)
+        self.log("val_loss", loss)
 
 
 def inference_on_dataset(encoder, decoder, val_loader, N, device):
@@ -106,7 +115,7 @@ def inference_on_dataset(encoder, decoder, val_loader, N, device):
             x_rec_mu += [mu_rec_i.detach().cpu()]
             x_rec_sigma += [sigma_rec_i.detach().cpu()]
             labels += [yi]
-    
+
     x = torch.cat(x, dim=0).numpy()
     labels = torch.cat(labels, dim=0).numpy()
     z_mu = torch.cat(z_mu, dim=0).numpy()
@@ -120,16 +129,18 @@ def inference_on_dataset(encoder, decoder, val_loader, N, device):
 def inference_on_latent_grid(decoder, z_mu, N, device):
 
     n_points_axis = 50
-    xg_mesh, yg_mesh, z_grid_loader = generate_latent_grid(z_mu, n_points_axis = n_points_axis)
-    
+    xg_mesh, yg_mesh, z_grid_loader = generate_latent_grid(
+        z_mu, n_points_axis=n_points_axis
+    )
+
     all_f_mu, all_f_sigma = [], []
     for z_grid in tqdm(z_grid_loader):
-        
+
         z_grid = z_grid[0].to(device)
 
         mu_rec_grid, mu2_rec_grid = None, None
         with torch.inference_mode():
-            
+
             # enable dropout
             apply_dropout(decoder)
 
@@ -163,53 +174,82 @@ def inference_on_latent_grid(decoder, z_mu, N, device):
 
     return xg_mesh, yg_mesh, sigma_vector, n_points_axis
 
+
 def test_mcdropout_ae(config):
 
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     path = f"{config['dataset']}/ae_dropout"
-    
+
     latent_size = 2
-    encoder = get_encoder(config['dataset'], latent_size, dropout=config["dropout_rate"]).eval().to(device)
-    encoder.load_state_dict(torch.load(f"../weights/{config['dataset']}/mcdropout_ae/encoder.pth"))
+    encoder = (
+        get_encoder(config["dataset"], latent_size, dropout=config["dropout_rate"])
+        .eval()
+        .to(device)
+    )
+    encoder.load_state_dict(
+        torch.load(f"../weights/{config['dataset']}/mcdropout_ae/encoder.pth")
+    )
 
-    decoder = get_decoder(config['dataset'], latent_size, dropout=config["dropout_rate"]).eval().to(device)
-    decoder.load_state_dict(torch.load(f"../weights/{config['dataset']}/mcdropout_ae/decoder.pth"))
+    decoder = (
+        get_decoder(config["dataset"], latent_size, dropout=config["dropout_rate"])
+        .eval()
+        .to(device)
+    )
+    decoder.load_state_dict(
+        torch.load(f"../weights/{config['dataset']}/mcdropout_ae/decoder.pth")
+    )
 
-    _, val_loader = get_data(config['dataset'], config["batch_size"])
-    _, ood_val_loader = get_data(config['ood_dataset'], config["batch_size"])
+    _, val_loader = get_data(config["dataset"], config["batch_size"])
+    _, ood_val_loader = get_data(config["ood_dataset"], config["batch_size"])
 
     # number of mc samples
     N = config["test_samples"]
 
     # forward eval
-    x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = inference_on_dataset(encoder, decoder, val_loader, N, device)
-    ood_x, ood_z_mu, ood_z_sigma, ood_x_rec_mu, ood_x_rec_sigma, ood_labels = inference_on_dataset(encoder, decoder, ood_val_loader, N, device)
-    
+    x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = inference_on_dataset(
+        encoder, decoder, val_loader, N, device
+    )
+    (
+        ood_x,
+        ood_z_mu,
+        ood_z_sigma,
+        ood_x_rec_mu,
+        ood_x_rec_sigma,
+        ood_labels,
+    ) = inference_on_dataset(encoder, decoder, ood_val_loader, N, device)
+
     # Grid for probability map
-    xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(decoder, z_mu, N, device)
-    
+    xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
+        decoder, z_mu, N, device
+    )
+
     # create figures
-    if not os.path.isdir(f"../figures/{path}/"): os.makedirs(f"../figures/{path}/")
+    if not os.path.isdir(f"../figures/{path}/"):
+        os.makedirs(f"../figures/{path}/")
 
     if config["dataset"] != "mnist":
         labels = None
-        
+
     plot_latent_space(path, z_mu, labels, xg_mesh, yg_mesh, sigma_vector, n_points_axis)
 
     if config["dataset"] == "mnist":
         plot_mnist_reconstructions(path, x, x_rec_mu, x_rec_sigma)
     if config["ood_dataset"] == "kmnist":
-        plot_mnist_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
+        plot_mnist_reconstructions(
+            path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_"
+        )
 
-    plot_latent_space_ood(path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels)
+    plot_latent_space_ood(
+        path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
+    )
     plot_ood_distributions(path, z_sigma, ood_z_sigma, x_rec_sigma, ood_x_rec_sigma)
 
 
 def train_mcdropout_ae(config):
 
     # data
-    train_loader, val_loader = get_data(config['dataset'])
+    train_loader, val_loader = get_data(config["dataset"])
 
     # model
     model = LitDropoutAutoEncoder(config)
@@ -223,20 +263,31 @@ def train_mcdropout_ae(config):
     # training
     n_device = torch.cuda.device_count()
 
-    trainer = pl.Trainer(gpus=n_device, num_nodes=1, auto_scale_batch_size=True, logger=logger, callbacks=callbacks)
+    trainer = pl.Trainer(
+        gpus=n_device,
+        num_nodes=1,
+        auto_scale_batch_size=True,
+        logger=logger,
+        callbacks=callbacks,
+    )
     trainer.fit(model, train_loader, val_loader)
-    
+
     # save weights
     path = f"../weights/{config['dataset']}/mcdropout_ae/"
     os.makedirs(path, exist_ok=True)
     torch.save(model.encoder.state_dict(), f"{path}/encoder.pth")
     torch.save(model.decoder.state_dict(), f"{path}/decoder.pth")
 
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default="../configs/ae_dropout.yaml",
-                        help='path to config you want to use')
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="../configs/ae_dropout.yaml",
+        help="path to config you want to use",
+    )
     args = parser.parse_args()
 
     with open(args.config) as file:
@@ -247,5 +298,3 @@ if __name__ == "__main__":
         train_mcdropout_ae(config)
 
     test_mcdropout_ae(config)
-
-    

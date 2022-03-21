@@ -206,5 +206,5 @@ def compute_and_plot_roc_curves(path, id_sigma, ood_sigma, pre_fix=""):
     metrics["auroc"] = float(score.numpy())
 
     # save metrics
-    with open(f"../figures/{path}/{pre_fix}ood_auroc.json", "w") as outfile:
+    with open(f"../figures/{path}/{pre_fix}ood_metrics.json", "w") as outfile:
         json.dump(metrics, outfile)

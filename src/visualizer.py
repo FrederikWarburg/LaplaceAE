@@ -158,7 +158,7 @@ def compute_and_plot_roc_curves(path, id_sigma, ood_sigma, pre_fix=""):
     )
 
     fig, ax = plt.subplots(1, 1, figsize=(9, 9))
-    plt.plot(fpr, tpr, label=f"AUROC {score}")
+    plt.plot(fpr, tpr)
     plt.xlabel("FPR")
     plt.ylabel("TPR")
     plt.legend()
@@ -202,8 +202,8 @@ def compute_and_plot_roc_curves(path, id_sigma, ood_sigma, pre_fix=""):
 
     # compute auroc
     auroc = torchmetrics.AUROC(num_classes=1)
-    score = auroc(torch.tensor(pred).unsqueeze(1), torch.tensor(target).unsqueeze(1))
-    metrics["auroc"] = float(score.numpy())
+    auroc_score = auroc(torch.tensor(pred).unsqueeze(1), torch.tensor(target).unsqueeze(1))
+    metrics["auroc"] = float(auroc_score.numpy())
 
     # save metrics
     with open(f"../figures/{path}/{pre_fix}ood_metrics.json", "w") as outfile:

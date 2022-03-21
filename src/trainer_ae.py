@@ -115,9 +115,7 @@ def inference_on_latent_grid(mu_decoder, var_decoder, z, device):
 
     # Grid for probability map
     n_points_axis = 50
-    xg_mesh, yg_mesh, z_grid_loader = generate_latent_grid(
-        z[:, 0].min(), z[:, 0].max(), z[:, 1].min(), z[:, 1].max(), n_points_axis
-    )
+    xg_mesh, yg_mesh, z_grid_loader = generate_latent_grid(z, n_points_axis)
 
     all_f_mu, all_f_sigma = [], []
     for z_grid in tqdm(z_grid_loader):

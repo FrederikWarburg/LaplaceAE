@@ -356,13 +356,7 @@ def inference_on_latent_grid(net, samples, z_mu):
 
     # Grid for probability map
     n_points_axis = 50
-    xg_mesh, yg_mesh, z_grid_loader = generate_latent_grid(
-        z_mu[:, 0].min(),
-        z_mu[:, 0].max(),
-        z_mu[:, 1].min(),
-        z_mu[:, 1].max(),
-        n_points_axis,
-    )
+    xg_mesh, yg_mesh, z_grid_loader = generate_latent_grid(z_mu, n_points_axis)
 
     # the hook signature that just replaces the current
     # feature map with the given point

@@ -21,6 +21,7 @@ from visualizer import (
     plot_latent_space,
     plot_latent_space_ood,
     plot_ood_distributions,
+    compute_and_plot_roc_curves,
 )
 
 
@@ -469,6 +470,9 @@ def test_lae(config, batch_size=1):
         path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
     )
     plot_ood_distributions(path, z_sigma, ood_z_sigma, x_rec_sigma, ood_x_rec_sigma)
+
+    compute_and_plot_roc_curves(path, z_sigma, ood_z_sigma, pre_fix="latent_")
+    compute_and_plot_roc_curves(path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_")
 
 
 def train_lae(config):

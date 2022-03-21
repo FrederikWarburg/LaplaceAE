@@ -1,9 +1,12 @@
+from builtins import breakpoint
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from matplotlib.patches import Ellipse
-import black
+import torchmetrics
+import torch
+import json
 
 
 def plot_latent_space(
@@ -139,3 +142,69 @@ def plot_ood_distributions(path, z_sigma, ood_z_sigma, x_rec_sigma, ood_x_rec_si
         fig.savefig(f"../figures/{path}/ood_x_rec_sigma_distribution.png")
         plt.cla()
         plt.close()
+
+
+def compute_and_plot_roc_curves(path, id_sigma, ood_sigma, pre_fix=""):
+
+    id_sigma, ood_sigma = id_sigma.sum(axis=1), ood_sigma.sum(axis=1)
+
+    pred = np.concatenate([id_sigma, ood_sigma])
+    target = np.concatenate([[0] * len(id_sigma), [1] * len(ood_sigma)])
+
+    # plot roc curve
+    roc = torchmetrics.ROC(num_classes=1)
+    fpr, tpr, thresholds = roc(
+        torch.tensor(pred).unsqueeze(1), torch.tensor(target).unsqueeze(1)
+    )
+
+    fig, ax = plt.subplots(1, 1, figsize=(9, 9))
+    plt.plot(fpr, tpr, label=f"AUROC {score}")
+    plt.xlabel("FPR")
+    plt.ylabel("TPR")
+    plt.legend()
+    fig.savefig(f"../figures/{path}/{pre_fix}ood_roc_curve.png")
+    plt.cla()
+    plt.close()
+
+    # save data
+    data = pd.DataFrame(
+        np.concatenate([pred[:, None], target[:, None]], axis=1),
+        columns=["sigma", "labels"],
+    )
+    data.to_csv(f"../figures/{path}/{pre_fix}ood_roc_curve_data.csv")
+
+    # plot precision recall curve
+    pr_curve = torchmetrics.PrecisionRecallCurve(pos_label=1)
+    precision, recall, thresholds = pr_curve(
+        torch.tensor(pred).unsqueeze(1), torch.tensor(target).unsqueeze(1)
+    )
+
+    fig, ax = plt.subplots(1, 1, figsize=(9, 9))
+    plt.plot(recall, precision)
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.legend()
+    fig.savefig(f"../figures/{path}/{pre_fix}ood_precision_recall_curve.png")
+    plt.cla()
+    plt.close()
+
+    metrics = {}
+
+    # compute auprc (area under precission recall curve)
+    auc = torchmetrics.AUC(reorder=True)
+    auprc_score = auc(recall, precision)
+    metrics["auprc"] = float(auprc_score.numpy())
+
+    # compute false positive rate at 80
+    num_id = len(id_sigma)
+    for p in range(0, 100, 10):
+        metrics[f"fpr{p}"] = float(fpr[int(p / 100.0 * num_id)].numpy())
+
+    # compute auroc
+    auroc = torchmetrics.AUROC(num_classes=1)
+    score = auroc(torch.tensor(pred).unsqueeze(1), torch.tensor(target).unsqueeze(1))
+    metrics["auroc"] = float(score.numpy())
+
+    # save metrics
+    with open(f"../figures/{path}/{pre_fix}ood_auroc.json", "w") as outfile:
+        json.dump(metrics, outfile)

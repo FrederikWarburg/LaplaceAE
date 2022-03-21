@@ -9,16 +9,17 @@ import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+from data import get_data, generate_latent_grid
+from models.ae_models import get_encoder, get_decoder
+import yaml
+import argparse
 from visualizer import (
     plot_mnist_reconstructions,
     plot_latent_space,
     plot_latent_space_ood,
     plot_ood_distributions,
+    compute_and_plot_roc_curves,
 )
-from data import get_data, generate_latent_grid
-from models.ae_models import get_encoder, get_decoder
-import yaml
-import argparse
 
 
 def apply_dropout(m):
@@ -244,6 +245,9 @@ def test_mcdropout_ae(config):
         path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
     )
     plot_ood_distributions(path, z_sigma, ood_z_sigma, x_rec_sigma, ood_x_rec_sigma)
+
+    compute_and_plot_roc_curves(path, z_sigma, ood_z_sigma, pre_fix="latent_")
+    compute_and_plot_roc_curves(path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_")
 
 
 def train_mcdropout_ae(config):

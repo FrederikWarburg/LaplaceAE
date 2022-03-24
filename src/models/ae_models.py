@@ -7,6 +7,9 @@ Created on Mon Dec 10 14:55:54 2018
 
 import torch
 from torch import nn
+import sys
+# sys.path.append("../../stochman")
+# from stochman import nnj as nn
 import numpy as np
 import matplotlib.pyplot as plt
 import math
@@ -36,7 +39,7 @@ def get_decoder(dataset, latent_size=2, dropout=0):
     return decoder
 
 
-class Encoder_swissrole(nn.Module):
+class Encoder_swissrole(torch.nn.Module):
     def __init__(self, latent_size, dropout):
         super(Encoder_swissrole, self).__init__()
         self.latent_size = latent_size
@@ -59,7 +62,7 @@ class Encoder_swissrole(nn.Module):
         return self.encoder(x)
 
 
-class Decoder_swissrole(nn.Module):
+class Decoder_swissrole(torch.nn.Module):
     def __init__(self, latent_size, dropout):
         super(Decoder_swissrole, self).__init__()
 
@@ -83,7 +86,7 @@ class Decoder_swissrole(nn.Module):
         return self.decoder(x)
 
 
-class Encoder_mnist(nn.Module):
+class Encoder_mnist(torch.nn.Module):
     def __init__(self, latent_size, dropout):
         super(Encoder_mnist, self).__init__()
         self.latent_size = latent_size
@@ -113,7 +116,7 @@ class Encoder_mnist(nn.Module):
         return self.encoder(x)
 
 
-class Decoder_mnist(nn.Module):
+class Decoder_mnist(torch.nn.Module):
     def __init__(self, latent_size, dropout):
         super(Decoder_mnist, self).__init__()
         self.latent_size = latent_size
@@ -143,17 +146,20 @@ class Decoder_mnist(nn.Module):
         return self.decoder(x)
 
 
-class Encoder_mnist_conv(nn.Module):
+class Encoder_mnist_conv(torch.nn.Module):
     def __init__(self, latent_size):
         super(Encoder_mnist_conv, self).__init__()
         self.latent_size = latent_size
 
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 32, 3, stride=2, padding=1),
+            nn.Conv2d(1, 8, 3, stride=1, padding=1),
+            nn.Maxpool2d(2),
             nn.Tanh(),
-            nn.Conv2d(32, 64, 3, stride=2, padding=1),
+            nn.Conv2d(8, 16, 3, stride=1, padding=1),
+            nn.Maxpool2d(2),
             nn.Tanh(),
-            nn.Conv2d(64, 32, 3, stride=2, padding=0),
+            nn.Conv2d(16, 32, 3, stride=1, padding=1),
+            nn.Maxpool2d(2),
             nn.Tanh(),
             nn.Flatten(),
             nn.Linear(3 * 3 * 32, latent_size),
@@ -164,20 +170,23 @@ class Encoder_mnist_conv(nn.Module):
         return self.encoder(x)
 
 
-class Decoder_mnist_conv(nn.Module):
+class Decoder_mnist_conv(torch.nn.Module):
     def __init__(self, latent_size):
         super(Decoder_mnist_conv, self).__init__()
         self.latent_size = latent_size
 
         self.decoder = nn.Sequential(
-            nn.Linear(latent_size, 3 * 7 * 7),
-            nn.Unflatten(dim=1, unflattened_size=(3, 7, 7)),
+            nn.Linear(latent_size, 3 * 3 * 32),
+            nn.Unflatten(dim=1, unflattened_size=(3, 3, 32)),
+            nn.Upsample(scale=2),
             nn.Tanh(),
-            nn.Upsample(scale_factor=2),
-            nn.Conv2d(3, 32, 3, padding=1),
+            nn.Conv2d(32, 16, 3, stride=1, padding=1),
+            nn.Upsample(scale=2),
             nn.Tanh(),
-            nn.Upsample(scale_factor=2),
-            nn.Conv2d(32, 1, 3, padding=1),
+            nn.Conv2d(16, 8, 3, stride=1, padding=1),
+            nn.Upsample(scale=2),
+            nn.Tanh(),
+            nn.Conv2d(8, 1, 3, stride=1, padding=1),
         )
 
     def forward(self, x):

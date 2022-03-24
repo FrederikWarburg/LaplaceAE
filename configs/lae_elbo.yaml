@@ -1,6 +1,6 @@
 
 # training
-train : False
+train : True
 kl_weight: 1e-6
 train_samples: 10
 
@@ -14,3 +14,4 @@ batch_size: 32
     
 # model
 pretrained : False
+no_conv : True

@@ -15,11 +15,14 @@ import matplotlib.pyplot as plt
 import math
 
 
-def get_encoder(dataset, latent_size=2, dropout=0):
+def get_encoder(config, latent_size=2, dropout=0):
 
-    if dataset == "mnist":
-        encoder = Encoder_mnist(latent_size, dropout)
-    elif dataset == "swissrole":
+    if config["dataset"] == "mnist":
+        if config["no_conv"]:
+            encoder = Encoder_mnist(latent_size, dropout)
+        else:
+            encoder = Encoder_mnist_conv(latent_size)
+    elif config["dataset"] == "swissrole":
         encoder = Encoder_swissrole(latent_size, dropout)
     else:
         raise NotImplemplenetError
@@ -27,11 +30,14 @@ def get_encoder(dataset, latent_size=2, dropout=0):
     return encoder
 
 
-def get_decoder(dataset, latent_size=2, dropout=0):
+def get_decoder(config, latent_size=2, dropout=0):
 
-    if dataset == "mnist":
-        decoder = Decoder_mnist(latent_size, dropout)
-    elif dataset == "swissrole":
+    if config["dataset"] == "mnist":
+        if config["no_conv"]:
+            decoder = Decoder_mnist(latent_size, dropout)
+        else:
+            decoder = Decoder_mnist_conv(latent_size)
+    elif config["dataset"] == "swissrole":
         decoder = Decoder_swissrole(latent_size, dropout)
     else:
         raise NotImplemplenetError
@@ -153,16 +159,16 @@ class Encoder_mnist_conv(torch.nn.Module):
 
         self.encoder = nn.Sequential(
             nn.Conv2d(1, 8, 3, stride=1, padding=1),
-            nn.Maxpool2d(2),
+            nn.MaxPool2d(2),
             nn.Tanh(),
             nn.Conv2d(8, 16, 3, stride=1, padding=1),
-            nn.Maxpool2d(2),
+            nn.MaxPool2d(2),
             nn.Tanh(),
             nn.Conv2d(16, 32, 3, stride=1, padding=1),
-            nn.Maxpool2d(2),
+            nn.MaxPool2d(2),
             nn.Tanh(),
             nn.Flatten(),
-            nn.Linear(3 * 3 * 32, latent_size),
+            nn.Linear(4 * 4 * 32, latent_size),
         )
 
     def forward(self, x):
@@ -176,15 +182,15 @@ class Decoder_mnist_conv(torch.nn.Module):
         self.latent_size = latent_size
 
         self.decoder = nn.Sequential(
-            nn.Linear(latent_size, 3 * 3 * 32),
-            nn.Unflatten(dim=1, unflattened_size=(3, 3, 32)),
-            nn.Upsample(scale=2),
+            nn.Linear(latent_size, 4 * 4 * 32),
+            nn.Unflatten(dim=1, unflattened_size=(32, 4, 4)),
+            nn.Upsample(scale_factor=2),
             nn.Tanh(),
             nn.Conv2d(32, 16, 3, stride=1, padding=1),
-            nn.Upsample(scale=2),
+            nn.Upsample(scale_factor=2),
             nn.Tanh(),
             nn.Conv2d(16, 8, 3, stride=1, padding=1),
-            nn.Upsample(scale=2),
+            nn.Upsample(scale_factor=2),
             nn.Tanh(),
             nn.Conv2d(8, 1, 3, stride=1, padding=1),
         )

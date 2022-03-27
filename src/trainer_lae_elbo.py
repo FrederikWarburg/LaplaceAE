@@ -18,6 +18,7 @@ from models.ae_models import get_encoder, get_decoder
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from copy import deepcopy
 import torchvision
+import torch.nn.functional as F
 import yaml
 import argparse
 from visualizer import (
@@ -47,50 +48,8 @@ def get_model(encoder, decoder):
     return nn.Sequential(net)
 
 
-def compute_hessian(x, feature_maps, net, output_size, h_scale):
-
-    H = []
-    bs = x.shape[0]
-    feature_maps = [x] + feature_maps
-    tmp = torch.diag_embed(torch.ones(bs, output_size, device=x.device))
-
-    with torch.no_grad():
-        for k in range(len(net) - 1, -1, -1):
-            if isinstance(net[k], torch.nn.Linear):
-                diag_elements = torch.diagonal(tmp, dim1=1, dim2=2)
-                feature_map_k2 = (feature_maps[k] ** 2).unsqueeze(1)
-
-                h_k = torch.bmm(diag_elements.unsqueeze(2), feature_map_k2).view(bs, -1)
-
-                # has a bias
-                if net[k].bias is not None:
-                    h_k = torch.cat([h_k, diag_elements], dim=1)
-
-                H = [h_k] + H
-
-            elif isinstance(net[k], torch.nn.Tanh):
-                J_tanh = torch.diag_embed(
-                    torch.ones(feature_maps[k + 1].shape, device=x.device)
-                    - feature_maps[k + 1] ** 2
-                )
-                # TODO: make more efficent by using row vectors
-                tmp = torch.einsum("bnm,bnj,bjk->bmk", J_tanh, tmp, J_tanh)
-
-            if k == 0:
-                break
-
-            if isinstance(net[k], torch.nn.Linear):
-                tmp = torch.einsum("nm,bnj,jk->bmk", net[k].weight, tmp, net[k].weight)
-
-    H = torch.cat(H, dim=1)
-
-    # mean over batch size scaled by the size of the dataset
-    H = h_scale * torch.mean(H, dim=0)
-
-    return H
-
-
 def jacobian_mult_wrt_input(layer, x, val, jac_in):
+    breakpoint()
 
     b, c1, h1, w1 = x.shape
     c2, h2, w2 = val.shape[1:]
@@ -107,6 +66,7 @@ def jacobian_mult_wrt_input(layer, x, val, jac_in):
 
 
 def jacobian_mult_wrt_input_transpose(layer, x, val, jac_in):
+    breakpoint()
 
     b, c1, h1, w1 = x.shape
     c2, h2, w2 = val.shape[1:]
@@ -123,7 +83,58 @@ def jacobian_mult_wrt_input_transpose(layer, x, val, jac_in):
     ).reshape(b, *jac_in.shape[4:], c2, h2, w2).movedim((-3, -2, -1), (1, 2, 3))
 
 
-def compute_hessian_stochman(x, feature_maps, net, output_size, h_scale):
+def jacobian_mult_wrt_weights(layer, x, val, jac_in):
+
+    kernel_size = layer.weight.data.shape[-1]
+    b, c1, h1, w1 = x.shape
+    c2, h2, w2 = val.shape[1:]
+    dw_padding = kernel_size - 1 - layer.padding[0]
+
+    #  the new weights are the reversed of the old input
+    reversed_input = torch.zeros_like(x)
+    for i in range(h1):
+        for j in range(w1):
+            reversed_input[0,0,i,j] = x[0,0,h1-i-1,w1-j-1]
+
+    breakpoint()
+    return F.conv_transpose2d(
+        jac_in.movedim((1, 2, 3), (-3, -2, -1)).reshape(-1, c1, h1, w1),
+        weight=torch.nn.Parameter(reversed_input),
+        bias=None,
+        stride=layer.stride,
+        padding=dw_padding,
+        dilation=layer.dilation,
+        groups=layer.groups,
+        output_padding=0,
+    ).reshape(b, *jac_in.shape[4:], c2, h2, w2).movedim((-3, -2, -1), (1, 2, 3))
+
+
+def jacobian_mult_wrt_weights_transpose(layer, x, val, jac_in):
+    breakpoint()
+
+    kernel_size = layer.weight.data.shape[-1]
+    b, c1, h1, w1 = x.shape
+    c2, h2, w2 = val.shape[1:]
+    dw_padding = kernel_size - 1 - layer.padding[0]
+
+    #  the new weights are the reversed of the old input
+    reversed_input = torch.zeros_like(x)
+    for i in range(h1):
+        for j in range(w1):
+            reversed_input[0,0,i,j] = x[0,0,h1-i-1,w1-j-1]
+
+    return F.conv(
+        jac_in.movedim((1, 2, 3), (-3, -2, -1)).reshape(-1, c1, h1, w1),
+        weight=torch.nn.Parameter(reversed_input),
+        bias=None,
+        stride=layer.stride,
+        padding=dw_padding,
+        dilation=layer.dilation,
+        groups=layer.groups,
+    ).reshape(b, *jac_in.shape[4:], c2, h2, w2).movedim((-3, -2, -1), (1, 2, 3))
+
+
+def compute_hessian(x, feature_maps, net, output_size, h_scale):
 
     H = []
     bs = x.shape[0]
@@ -132,10 +143,7 @@ def compute_hessian_stochman(x, feature_maps, net, output_size, h_scale):
 
     with torch.no_grad():
         for k in range(len(net) - 1, -1, -1):
-
-            b, c, h, w = feature_maps[k].shape
-            B = c*h*w
-            breakpoint() 
+            
             # parameter w.r.t weight
             if isinstance(net[k], torch.nn.Linear):
                 diag_elements = torch.diagonal(tmp, dim1=1, dim2=2)
@@ -151,16 +159,18 @@ def compute_hessian_stochman(x, feature_maps, net, output_size, h_scale):
 
             elif isinstance(net[k], torch.nn.Conv2d):
 
+                b, c, h, w = feature_maps[k].shape
+                B = c*h*w
+
                 # create identity matrix in order to call jacobian_mult to get jacobian rather than jacobian_mult
-                base_vector = torch.zeros((b, h * w, c, h, w), device=tmp.device)
+                base_vector = torch.zeros((b, c * h * w, c, h, w), device=tmp.device)
                 for col in range(w):
                     for row in range(h):
                         for chan in range(c):
                             base_vector[:, chan*h*w+row*w+col, chan, row, col] = 1
 
                 # 1. right product side
-                #TODO: change this line
-                rps = jacobian_mult_wrt_input(net[k], feature_maps[k], feature_maps[k+1], base_vector)
+                rps = jacobian_mult_wrt_weights(net[k], feature_maps[k], feature_maps[k+1], base_vector)
                 rps = rps.view(b, B, B)
 
                 # 2. right center product side
@@ -168,8 +178,7 @@ def compute_hessian_stochman(x, feature_maps, net, output_size, h_scale):
 
                 # 3. the rest
                 rcps = rcps.view(b, B, c, h, w)
-                #TODO: change this line
-                tmp = jacobian_mult_wrt_input_transpose(net[k], feature_maps[k], feature_maps[k+1], rcps)
+                tmp = jacobian_mult_wrt_weights_transpose(net[k], feature_maps[k], feature_maps[k+1], rcps)
                 tmp = tmp.view(b, B, B)
 
             # non parametric w.r.t input
@@ -191,7 +200,7 @@ def compute_hessian_stochman(x, feature_maps, net, output_size, h_scale):
             elif isinstance(net[k], torch.nn.Conv2D):
                 
                 # create identity matrix in order to call jacobian_mult to get jacobian rather than jacobian_mult
-                base_vector = torch.zeros((b, h * w, c, h, w), device=tmp.device)
+                base_vector = torch.zeros((b, c * h * w, c, h, w), device=tmp.device)
                 for col in range(w):
                     for row in range(h):
                         for chan in range(c):
@@ -230,8 +239,8 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         self.no_conv = config["no_conv"]
 
         self.dataset_size = dataset_size
-        encoder = get_encoder(config["dataset"], latent_size)
-        decoder = get_decoder(config["dataset"], latent_size)
+        encoder = get_encoder(config, latent_size)
+        decoder = get_decoder(config, latent_size)
 
         if config["pretrained"]:
             path = f"../weights/{config['dataset']}/ae_[use_var_dec=False]"
@@ -242,13 +251,13 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         self.constant = 1.0 / (2 * self.sigma_n**2)
 
         self.net = get_model(encoder, decoder)
-        self.output_size = self.net[-1].out_features
+        self.output_size = self.net[-1].out_features if config["no_conv"] else 32*32
 
         self.feature_maps = []
 
         def fw_hook_get_latent(module, input, output):
             self.feature_maps.append(output.detach())
-        breakpoint()
+        
         for k in range(len(self.net)):
             self.net[k].register_forward_hook(fw_hook_get_latent)
 
@@ -278,9 +287,10 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         self.timings["entire_training_step"] = time.time()
 
         x, y = train_batch
-
         if self.no_conv:
             x = x.view(x.size(0), -1)
+        else:
+            x = F.interpolate(x, (32, 32))
 
         # compute kl
         sigma_q = 1 / (self.h + 1e-6)
@@ -321,9 +331,6 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             # compute hessian for sample net
             start = time.time()
             h_s = compute_hessian(
-                x, self.feature_maps, self.net, self.output_size, self.dataset_size
-            )
-            h_s = compute_hessian_stochman(
                 x, self.feature_maps, self.net, self.output_size, self.dataset_size
             )
             self.timings["compute_hessian"] += time.time() - start
@@ -377,6 +384,11 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
         # log images
         if self.current_epoch > self.last_epoch_logged:
+
+            if not self.no_conv:
+                x = F.interpolate(x, (28, 28))
+                x_rec = F.interpolate(x_rec, (28, 28))
+
             img_grid = torch.clamp(
                 torchvision.utils.make_grid(x[:4].view(-1, 1, 28, 28)), 0, 1
             )
@@ -410,7 +422,11 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
     def validation_step(self, val_batch, batch_idx):
         x, y = val_batch
-        x = x.view(x.size(0), -1)
+        
+        if self.no_conv:
+            x = x.view(x.size(0), -1)
+        else:
+            x = F.interpolate(x, (32, 32))
 
         x_rec = self.net(x)
         loss = F.mse_loss(x_rec, x)
@@ -418,6 +434,11 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         self.log("val_loss", loss)
 
         if self.current_epoch > self.last_epoch_logged_val:
+
+            if not self.no_conv:
+                x = F.interpolate(x, (28, 28))
+                x_rec = F.interpolate(x_rec, (28, 28))
+
             img_grid = torch.clamp(
                 torchvision.utils.make_grid(x[:4].view(-1, 1, 28, 28)), 0, 1
             )
@@ -545,8 +566,8 @@ def test_lae(config, batch_size=1):
     path = f"{config['dataset']}/lae_elbo"
 
     latent_size = 2
-    encoder = get_encoder(config["dataset"], latent_size)
-    decoder = get_decoder(config["dataset"], latent_size)
+    encoder = get_encoder(config, latent_size)
+    decoder = get_decoder(config, latent_size)
 
     net = get_model(encoder, decoder).eval().to(device)
     net.load_state_dict(torch.load(f"../weights/{path}/net.pth"))

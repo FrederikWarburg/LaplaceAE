@@ -33,13 +33,13 @@ class LitVariationalAutoEncoder(pl.LightningModule):
         self.use_var_decoder = config["use_var_decoder"]
 
         latent_size = 2
-        self.mu_encoder = get_encoder(config["dataset"], latent_size)
-        self.var_encoder = get_encoder(config["dataset"], latent_size)
+        self.mu_encoder = get_encoder(config, latent_size)
+        self.var_encoder = get_encoder(config, latent_size)
 
-        self.mu_decoder = get_decoder(config["dataset"], latent_size)
+        self.mu_decoder = get_decoder(config, latent_size)
 
         if self.use_var_decoder:
-            self.var_decoder = get_decoder(config["dataset"], latent_size)
+            self.var_decoder = get_decoder(config, latent_size)
 
     def forward(self, x):
         mean = self.mu_encoder(x)
@@ -220,16 +220,16 @@ def test_vae(config):
     path = f"{config['dataset']}/vae_[use_var_dec={config['use_var_decoder']}]"
 
     latent_size = 2
-    mu_encoder = get_encoder(config["dataset"], latent_size).eval().to(device)
-    var_encoder = get_encoder(config["dataset"], latent_size).eval().to(device)
+    mu_encoder = get_encoder(config, latent_size).eval().to(device)
+    var_encoder = get_encoder(config, latent_size).eval().to(device)
     mu_encoder.load_state_dict(torch.load(f"../weights/{path}/mu_encoder.pth"))
     var_encoder.load_state_dict(torch.load(f"../weights/{path}/var_encoder.pth"))
 
-    mu_decoder = get_decoder(config["dataset"], latent_size).eval().to(device)
+    mu_decoder = get_decoder(config, latent_size).eval().to(device)
     mu_decoder.load_state_dict(torch.load(f"../weights/{path}/mu_decoder.pth"))
 
     if config["use_var_decoder"]:
-        var_decoder = get_decoder(config["dataset"], latent_size).eval().to(device)
+        var_decoder = get_decoder(config, latent_size).eval().to(device)
         var_decoder.load_state_dict(torch.load(f"../weights/{path}/var_decoder.pth"))
     else:
         var_decoder = None

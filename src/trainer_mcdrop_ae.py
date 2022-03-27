@@ -33,10 +33,10 @@ class LitDropoutAutoEncoder(pl.LightningModule):
 
         latent_size = 2
         self.encoder = get_encoder(
-            config["dataset"], latent_size, dropout=config["dropout_rate"]
+            config, latent_size, dropout=config["dropout_rate"]
         )
         self.decoder = get_decoder(
-            config["dataset"], latent_size, dropout=config["dropout_rate"]
+            config, latent_size, dropout=config["dropout_rate"]
         )
 
     def forward(self, x):
@@ -184,7 +184,7 @@ def test_mcdropout_ae(config):
 
     latent_size = 2
     encoder = (
-        get_encoder(config["dataset"], latent_size, dropout=config["dropout_rate"])
+        get_encoder(config, latent_size, dropout=config["dropout_rate"])
         .eval()
         .to(device)
     )
@@ -193,7 +193,7 @@ def test_mcdropout_ae(config):
     )
 
     decoder = (
-        get_decoder(config["dataset"], latent_size, dropout=config["dropout_rate"])
+        get_decoder(config, latent_size, dropout=config["dropout_rate"])
         .eval()
         .to(device)
     )

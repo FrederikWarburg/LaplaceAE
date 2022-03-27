@@ -126,7 +126,7 @@ def test_lae_decoder(config):
     path = f"{config['dataset']}/lae_post_hoc_[use_la_encoder=False]"
 
     latent_size = 2
-    encoder = get_encoder(config["dataset"], latent_size).eval().to(device)
+    encoder = get_encoder(config, latent_size).eval().to(device)
     encoder.load_state_dict(
         torch.load(f"../weights/mnist/ae_[use_var_dec=False]/encoder.pth")
     )
@@ -312,8 +312,8 @@ def train_lae(config):
     # initialize_model
     latent_size = 2
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    encoder = get_encoder(config["dataset"], latent_size).eval().to(device)
-    decoder = get_decoder(config["dataset"], latent_size).eval().to(device)
+    encoder = get_encoder(config, latent_size).eval().to(device)
+    decoder = get_decoder(config, latent_size).eval().to(device)
 
     # load model weights
     path = f"../weights/{config['dataset']}/ae_[use_var_dec=False]"

@@ -21,16 +21,16 @@ from visualizer import (
 
 
 class LitAutoEncoder(pl.LightningModule):
-    def __init__(self, dataset, use_var_decoder):
+    def __init__(self, config):
         super().__init__()
 
-        self.use_var_decoder = use_var_decoder
+        self.use_var_decoder = config["use_var_decoder"]
 
         latent_size = 2
-        self.encoder = get_encoder(dataset, latent_size)
-        self.mu_decoder = get_decoder(dataset, latent_size)
+        self.encoder = get_encoder(config, latent_size)
+        self.mu_decoder = get_decoder(config, latent_size)
         if self.use_var_decoder:
-            self.var_decoder = get_decoder(dataset, latent_size)
+            self.var_decoder = get_decoder(config, latent_size)
 
     def forward(self, x):
         embedding = self.encoder(x)
@@ -147,14 +147,14 @@ def test_ae(config):
     path = f"{config['dataset']}/ae_[use_var_dec={config['use_var_decoder']}]"
 
     latent_size = 2
-    encoder = get_encoder(config["dataset"], latent_size).eval().to(device)
+    encoder = get_encoder(config, latent_size).eval().to(device)
     encoder.load_state_dict(torch.load(f"../weights/{path}/encoder.pth"))
 
-    mu_decoder = get_decoder(config["dataset"], latent_size).eval().to(device)
+    mu_decoder = get_decoder(config, latent_size).eval().to(device)
     mu_decoder.load_state_dict(torch.load(f"../weights/{path}/mu_decoder.pth"))
 
     if config["use_var_decoder"]:
-        var_decoder = get_decoder(config["dataset"], latent_size).eval().to(device)
+        var_decoder = get_decoder(config, latent_size).eval().to(device)
         var_decoder.load_state_dict(torch.load(f"../weights/{path}/var_decoder.pth"))
     else:
         var_decoder = None
@@ -202,7 +202,7 @@ def train_ae(config):
     train_loader, val_loader = get_data(config["dataset"])
 
     # model
-    model = LitAutoEncoder(config["dataset"], config["use_var_decoder"])
+    model = LitAutoEncoder(config)
 
     # default logger used by trainer
     logger = TensorBoardLogger(save_dir="../", version=1, name="lightning_logs")

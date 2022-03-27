@@ -12,11 +12,11 @@ import matplotlib.pyplot as plt
 import math
 
 
-def get_encoder(dataset, latent_size=2):
+def get_encoder(config, latent_size=2):
 
-    if dataset == "mnist":
+    if config["dataset"] == "mnist":
         encoder = Encoder_mnist(latent_size)
-    elif dataset == "swissrole":
+    elif config["dataset"] == "swissrole":
         encoder = Encoder_swissrole(latent_size)
     else:
         raise NotImplemplenetError

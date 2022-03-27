@@ -94,16 +94,16 @@ def jacobian_mult_wrt_weights(layer, x, val, jac_in):
     reversed_input = torch.zeros_like(x)
     for i in range(h1):
         for j in range(w1):
-            reversed_input[0,0,i,j] = x[0,0,h1-i-1,w1-j-1]
+            reversed_input[:,:,i,j] = x[:,:,h1-i-1,w1-j-1]
 
     breakpoint()
     return F.conv_transpose2d(
         jac_in.movedim((1, 2, 3), (-3, -2, -1)).reshape(-1, c1, h1, w1),
         weight=torch.nn.Parameter(reversed_input),
         bias=None,
-        stride=layer.stride,
+        stride=layer.stride[0],
         padding=dw_padding,
-        dilation=layer.dilation,
+        dilation=layer.dilation[0],
         groups=layer.groups,
         output_padding=0,
     ).reshape(b, *jac_in.shape[4:], c2, h2, w2).movedim((-3, -2, -1), (1, 2, 3))
@@ -121,15 +121,15 @@ def jacobian_mult_wrt_weights_transpose(layer, x, val, jac_in):
     reversed_input = torch.zeros_like(x)
     for i in range(h1):
         for j in range(w1):
-            reversed_input[0,0,i,j] = x[0,0,h1-i-1,w1-j-1]
+            reversed_input[:,:,i,j] = x[:,:,h1-i-1,w1-j-1]
 
     return F.conv(
         jac_in.movedim((1, 2, 3), (-3, -2, -1)).reshape(-1, c1, h1, w1),
         weight=torch.nn.Parameter(reversed_input),
         bias=None,
-        stride=layer.stride,
+        stride=layer.stride[0],
         padding=dw_padding,
-        dilation=layer.dilation,
+        dilation=layer.dilation[0],
         groups=layer.groups,
     ).reshape(b, *jac_in.shape[4:], c2, h2, w2).movedim((-3, -2, -1), (1, 2, 3))
 
@@ -170,7 +170,7 @@ def compute_hessian(x, feature_maps, net, output_size, h_scale):
                             base_vector[:, chan*h*w+row*w+col, chan, row, col] = 1
 
                 # 1. right product side
-                rps = jacobian_mult_wrt_weights(net[k], feature_maps[k], feature_maps[k+1], base_vector)
+                rps = jacobian_mult_wrt_weights(net[k], feature_maps[k+1], feature_maps[k], base_vector)
                 rps = rps.view(b, B, B)
 
                 # 2. right center product side
@@ -178,7 +178,7 @@ def compute_hessian(x, feature_maps, net, output_size, h_scale):
 
                 # 3. the rest
                 rcps = rcps.view(b, B, c, h, w)
-                tmp = jacobian_mult_wrt_weights_transpose(net[k], feature_maps[k], feature_maps[k+1], rcps)
+                tmp = jacobian_mult_wrt_weights_transpose(net[k], feature_maps[k+1], feature_maps[k], rcps)
                 tmp = tmp.view(b, B, B)
 
             # non parametric w.r.t input
@@ -207,7 +207,7 @@ def compute_hessian(x, feature_maps, net, output_size, h_scale):
                             base_vector[:, chan*h*w+row*w+col, chan, row, col] = 1
 
                 # 1. right product side
-                rps = jacobian_mult_wrt_input(net[k], feature_maps[k], feature_maps[k+1], base_vector)
+                rps = jacobian_mult_wrt_input(net[k], feature_maps[k+1], feature_maps[k], base_vector)
                 rps = rps.view(b, B, B)
 
                 # 2. right center product side
@@ -215,7 +215,7 @@ def compute_hessian(x, feature_maps, net, output_size, h_scale):
 
                 # 3. the rest
                 rcps = rcps.view(b, B, c, h, w)
-                tmp = jacobian_mult_wrt_input_transpose(net[k], feature_maps[k], feature_maps[k+1], rcps)
+                tmp = jacobian_mult_wrt_input_transpose(net[k], feature_maps[k+1], feature_maps[k], rcps)
                 tmp = tmp.view(b, B, B)
 
     H = torch.cat(H, dim=1)

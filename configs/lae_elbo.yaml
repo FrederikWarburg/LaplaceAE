@@ -10,7 +10,7 @@ test_samples: 100
 # data
 dataset : "mnist"
 ood_dataset : "kmnist"
-batch_size: 2
+batch_size: 1
     
 # model
 pretrained : False

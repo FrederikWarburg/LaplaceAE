@@ -98,7 +98,8 @@ def jacobian_mult_wrt_weights(layer, x, val, jac_in):
 
     breakpoint()
     return F.conv_transpose2d(
-        jac_in.movedim((1, 2, 3), (-3, -2, -1)).reshape(-1, c1, h1, w1),
+        # TODO: can we find the structure of the reshape, so we can use an expand instead of reshape.
+        jac_in.movedim((1, 2, 3), (-3, -2, -1)).view(-1, c1, h1, w1),
         weight=torch.nn.Parameter(reversed_input),
         bias=None,
         stride=layer.stride[0],
@@ -161,14 +162,15 @@ def compute_hessian(x, feature_maps, net, output_size, h_scale):
 
                 b, c, h, w = feature_maps[k].shape
                 B = c*h*w
-
+                breakpoint()
                 # create identity matrix in order to call jacobian_mult to get jacobian rather than jacobian_mult
-                base_vector = torch.zeros((b, c * h * w, c, h, w), device=tmp.device)
+                # TODO: try torch.repeat, torch.expand function to reduce memory
+                base_vector = torch.zeros((b, 1, c, h, w), device=tmp.device).expand(b, c * h * w, c, h, w)
                 for col in range(w):
                     for row in range(h):
                         for chan in range(c):
                             base_vector[:, chan*h*w+row*w+col, chan, row, col] = 1
-
+                breakpoint()
                 # 1. right product side
                 rps = jacobian_mult_wrt_weights(net[k], feature_maps[k+1], feature_maps[k], base_vector)
                 rps = rps.view(b, B, B)
@@ -198,14 +200,14 @@ def compute_hessian(x, feature_maps, net, output_size, h_scale):
                 tmp = torch.einsum("nm,bnj,jk->bmk", net[k].weight, tmp, net[k].weight)
 
             elif isinstance(net[k], torch.nn.Conv2D):
-                
+                breakpoint()
                 # create identity matrix in order to call jacobian_mult to get jacobian rather than jacobian_mult
-                base_vector = torch.zeros((b, c * h * w, c, h, w), device=tmp.device)
+                base_vector = torch.zeros((b, 1, c, h, w), device=tmp.device).expand(b, c * h * w, c, h, w)
                 for col in range(w):
                     for row in range(h):
                         for chan in range(c):
                             base_vector[:, chan*h*w+row*w+col, chan, row, col] = 1
-
+                breakpoint()
                 # 1. right product side
                 rps = jacobian_mult_wrt_input(net[k], feature_maps[k+1], feature_maps[k], base_vector)
                 rps = rps.view(b, B, B)
@@ -290,7 +292,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         if self.no_conv:
             x = x.view(x.size(0), -1)
         else:
-            x = F.interpolate(x, (32, 32))
+            x = F.interpolate(x, (64, 64))
 
         # compute kl
         sigma_q = 1 / (self.h + 1e-6)
@@ -426,7 +428,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         if self.no_conv:
             x = x.view(x.size(0), -1)
         else:
-            x = F.interpolate(x, (32, 32))
+            x = F.interpolate(x, (64, 64))
 
         x_rec = self.net(x)
         loss = F.mse_loss(x_rec, x)

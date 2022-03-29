@@ -168,7 +168,7 @@ class Encoder_mnist_conv(torch.nn.Module):
             nn.MaxPool2d(2),
             nn.Tanh(),
             nn.Flatten(),
-            nn.Linear(4 * 4 * 32, latent_size),
+            nn.Linear(8 * 8 * 32, latent_size),
         )
 
     def forward(self, x):
@@ -182,8 +182,8 @@ class Decoder_mnist_conv(torch.nn.Module):
         self.latent_size = latent_size
 
         self.decoder = nn.Sequential(
-            nn.Linear(latent_size, 4 * 4 * 32),
-            nn.Unflatten(dim=1, unflattened_size=(32, 4, 4)),
+            nn.Linear(latent_size, 8 * 8 * 32),
+            nn.Unflatten(dim=1, unflattened_size=(32, 8, 8)),
             nn.Upsample(scale_factor=2),
             nn.Tanh(),
             nn.Conv2d(32, 16, 3, stride=1, padding=1),

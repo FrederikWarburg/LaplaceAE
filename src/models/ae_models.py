@@ -6,31 +6,15 @@ Created on Mon Dec 10 14:55:54 2018
 """
 
 import torch
-from torch import nn
+import matplotlib.pyplot as plt
+import torch.nn.functional as F
+from torch import Tensor
+
 import sys
 
-# sys.path.append("../../stochman")
-# from stochman import nnj as nn
-import numpy as np
-import matplotlib.pyplot as plt
-import math
-import torch.nn.functional as F
-from torch import nn, Tensor
+sys.path.append("../../stochman")
 
-
-class MaxPool2d(nn.MaxPool2d):
-    def forward(self, input: Tensor):
-        val, idx = F.max_pool2d(
-            input,
-            self.kernel_size,
-            self.stride,
-            self.padding,
-            self.dilation,
-            self.ceil_mode,
-            return_indices=True,
-        )
-        self.idx = idx
-        return val
+from stochman import nnj as nn
 
 
 def get_encoder(config, latent_size=2, dropout=0):
@@ -177,13 +161,13 @@ class Encoder_mnist_conv(torch.nn.Module):
 
         self.encoder = nn.Sequential(
             nn.Conv2d(1, 8, 3, stride=1, padding=1, bias=None),
-            MaxPool2d(2),
+            nn.MaxPool2d(2),
             nn.Tanh(),
             nn.Conv2d(8, 16, 3, stride=1, padding=1, bias=None),
-            MaxPool2d(2),
+            nn.MaxPool2d(2),
             nn.Tanh(),
             nn.Conv2d(16, 32, 3, stride=1, padding=1, bias=None),
-            MaxPool2d(2),
+            nn.MaxPool2d(2),
             nn.Tanh(),
             nn.Flatten(),
             nn.Linear(8 * 8 * 32, latent_size),
@@ -201,7 +185,8 @@ class Decoder_mnist_conv(torch.nn.Module):
 
         self.decoder = nn.Sequential(
             nn.Linear(latent_size, 8 * 8 * 32),
-            nn.Unflatten(dim=1, unflattened_size=(32, 8, 8)),
+            #nn.Unflatten(dim=1, unflattened_size=(32, 8, 8)),
+            nn.Reshape(32,8,8),
             nn.Upsample(scale_factor=2),
             nn.Tanh(),
             nn.Conv2d(32, 16, 3, stride=1, padding=1, bias=None),

@@ -1,18 +1,12 @@
 from builtins import breakpoint
 import os
-from stochman.stochman.nnj import MaxPool2d
+
 import torch
+from torch import nn
 
-# from torch import nn
 import sys
-
 sys.path.append("../stochman")
-from stochman import nnj as nn
-
-from jacobians.conv_diag import (
-    conv_jacobian_wrt_input_diag_sandwich,
-    conv_jacobian_wrt_weight_diag_sandwich,
-)
+from stochman import nnj
 
 from torch.nn import functional as F
 from tqdm import tqdm
@@ -56,107 +50,42 @@ def get_model(encoder, decoder):
     return nn.Sequential(net)
 
 
-def compute_jac_wrt_weights(layer, feat_in, feat_out, tmp):
-
-    if isinstance(layer, torch.nn.Linear):
-        b, c = feat_in.shape
-
-        diag_elements = torch.diagonal(tmp, dim1=1, dim2=2)
-        feat_k2 = (feat_in**2).unsqueeze(1)
-
-        h_k = torch.bmm(diag_elements.unsqueeze(2), feat_k2).view(b, -1)
-
-        # has a bias
-        if layer.bias is not None:
-            h_k = torch.cat([h_k, diag_elements], dim=1)
-
-    elif isinstance(layer, torch.nn.Conv2d):
-
-        # diagonalize tmp
-        tmp = torch.diagonal(tmp, dim1=1, dim2=2)
-
-        h_k = conv_jacobian_wrt_weight_diag_sandwich(layer, feat_in, feat_out, tmp)
-
-    else:
-        # non parametric layer
-        h_k = []
-
-    return h_k
-
-
-def compute_jac_wrt_inputs(layer, feat_in, feat_out, tmp):
-
-    if isinstance(layer, torch.nn.Tanh):
-        breakpoint()
-        b = feat_out.shape[0]
-        J_tanh = 1.0 - feat_out**2
-        if feat_out.ndim == 4:
-            J_tanh = J_tanh.view(b, -1)
-            tmp = J_tanh**2 * tmp
-        else:
-            J_tanh = torch.diag_embed(J_tanh.view(b, -1))
-            tmp = torch.einsum("bnm,bnj,bjk->bmk", J_tanh, tmp, J_tanh)
-
-    elif isinstance(layer, torch.nn.Upsample):
-
-        xs = feat_in.shape
-        vs = feat_out.shape
-
-        dims1 = tuple(range(1, feat_in.ndim))
-        dims2 = tuple(range(-feat_in.ndim + 1, 0))
-
-        F.interpolate(
-            jac_in.movedim(dims1, dims2).reshape(-1, *xs[1:]),
-            layer.size,
-            layer.scale_factor,
-            layer.mode,
-            layer.align_corners,
-        ).reshape(xs[0], *jac_in.shape[feat_in.ndim :], *vs[1:]).movedim(dims2, dims1)
-
-    elif isinstance(layer, torch.nn.MaxPool2d):
-
-        new_tmp = torch.zeros_like(feat_in)
-        new_tmp[layer.idx] = tmp
-        tmp = new_tmp
-
-    # parameteric w.r.t. inputs
-    elif isinstance(layer, torch.nn.Linear):
-        tmp = torch.einsum("nm,bnj,jk->bmk", layer.weight, tmp, layer.weight)
-
-    elif isinstance(layer, torch.nn.Conv2d):
-
-        # diagonalize tmp (#TODO: check memory, we don't want to store full tmp.)
-        tmp = torch.diagonal(tmp, dim1=1, dim2=2)
-
-        tmp = conv_jacobian_wrt_input_diag_sandwich(layer, feat_in, feat_out, tmp)
-
-    else:
-        breakpoint()
-        print(f"The jacobian wrt. input of {layer} is not implemented yet")
-        raise NotImplementedError
-
-    return tmp
-
-
 def compute_hessian(x, feature_maps, net, output_size, h_scale):
 
     H = []
     bs = x.shape[0]
     feature_maps = [x] + feature_maps
     tmp = torch.diag_embed(torch.ones(bs, output_size, device=x.device))
+    diag = False
+    if diag:
+        tmp = torch.diagonal(tmp, dim1=1, dim2=2)
 
     with torch.no_grad():
         for k in range(len(net) - 1, -1, -1):
-
+            
+            if isinstance(net[k], nnj.Reshape):
+                diag = False
+                tmp = torch.diag_embed(tmp, dim1=1, dim2=2)
+            elif isinstance(net[k], nnj.Flatten):
+                diag = True
+                tmp = torch.diagonal(tmp, dim1=1, dim2=2)
+            
             # jacobian w.r.t weight
-            h_k = compute_jac_wrt_weights(
-                net[k], feature_maps[k], feature_maps[k + 1], tmp
+            h_k = net[k]._jacobian_wrt_weight_sandwich(
+                feature_maps[k],
+                feature_maps[k + 1],
+                tmp,
+                diag=diag,
             )
-            H = [h_k] + H
-
+            if h_k is not None:
+                H = [h_k] + H
+            
             # jacobian w.r.t input
-            tmp = compute_jac_wrt_inputs(
-                net[k], feature_maps[k], feature_maps[k + 1], tmp
+            tmp = net[k]._jacobian_wrt_input_sandwich(
+                feature_maps[k],
+                feature_maps[k + 1],
+                tmp,
+                diag=diag,
             )
 
     H = torch.cat(H, dim=1)

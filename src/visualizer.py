@@ -202,7 +202,9 @@ def compute_and_plot_roc_curves(path, id_sigma, ood_sigma, pre_fix=""):
 
     # compute auroc
     auroc = torchmetrics.AUROC(num_classes=1)
-    auroc_score = auroc(torch.tensor(pred).unsqueeze(1), torch.tensor(target).unsqueeze(1))
+    auroc_score = auroc(
+        torch.tensor(pred).unsqueeze(1), torch.tensor(target).unsqueeze(1)
+    )
     metrics["auroc"] = float(auroc_score.numpy())
 
     # save metrics

@@ -1,10 +1,18 @@
 from builtins import breakpoint
 import os
+from stochman.stochman.nnj import MaxPool2d
 import torch
-#from torch import nn
+
+# from torch import nn
 import sys
+
 sys.path.append("../stochman")
 from stochman import nnj as nn
+
+from jacobians.conv_diag import (
+    conv_jacobian_wrt_input_diag_sandwich,
+    conv_jacobian_wrt_weight_diag_sandwich,
+)
 
 from torch.nn import functional as F
 from tqdm import tqdm
@@ -48,91 +56,86 @@ def get_model(encoder, decoder):
     return nn.Sequential(net)
 
 
-def jacobian_mult_wrt_input(layer, x, val, jac_in):
-    breakpoint()
+def compute_jac_wrt_weights(layer, feat_in, feat_out, tmp):
 
-    b, c1, h1, w1 = x.shape
-    c2, h2, w2 = val.shape[1:]
+    if isinstance(layer, torch.nn.Linear):
+        b, c = feat_in.shape
 
-    return F.conv2d(
-        jac_in.movedim((1, 2, 3), (-3, -2, -1)).reshape(-1, c1, h1, w1),
-        weight=layer.weight,
-        bias=None,
-        stride=layer.stride,
-        padding=layer.padding,
-        dilation=layer.dilation,
-        groups=layer.groups,
-    ).reshape(b, *jac_in.shape[4:], c2, h2, w2).movedim((-3, -2, -1), (1, 2, 3))
+        diag_elements = torch.diagonal(tmp, dim1=1, dim2=2)
+        feat_k2 = (feat_in**2).unsqueeze(1)
 
+        h_k = torch.bmm(diag_elements.unsqueeze(2), feat_k2).view(b, -1)
 
-def jacobian_mult_wrt_input_transpose(layer, x, val, jac_in):
-    breakpoint()
+        # has a bias
+        if layer.bias is not None:
+            h_k = torch.cat([h_k, diag_elements], dim=1)
 
-    b, c1, h1, w1 = x.shape
-    c2, h2, w2 = val.shape[1:]
-    
-    return F.conv_transpose2d(
-        jac_in.movedim((1, 2, 3), (-3, -2, -1)).reshape(-1, c1, h1, w1),
-        weight=layer.weight,
-        bias=None,
-        stride=layer.stride,
-        padding=layer.padding,
-        dilation=layer.dilation,
-        groups=layer.groups,
-        output_padding=0, #layer.output_padding,
-    ).reshape(b, *jac_in.shape[4:], c2, h2, w2).movedim((-3, -2, -1), (1, 2, 3))
+    elif isinstance(layer, torch.nn.Conv2d):
+
+        # diagonalize tmp
+        tmp = torch.diagonal(tmp, dim1=1, dim2=2)
+
+        h_k = conv_jacobian_wrt_weight_diag_sandwich(layer, feat_in, feat_out, tmp)
+
+    else:
+        # non parametric layer
+        h_k = []
+
+    return h_k
 
 
-def jacobian_mult_wrt_weights(layer, x, val, jac_in):
+def compute_jac_wrt_inputs(layer, feat_in, feat_out, tmp):
 
-    kernel_size = layer.weight.data.shape[-1]
-    b, c1, h1, w1 = x.shape
-    c2, h2, w2 = val.shape[1:]
-    dw_padding = kernel_size - 1 - layer.padding[0]
+    if isinstance(layer, torch.nn.Tanh):
+        breakpoint()
+        b = feat_out.shape[0]
+        J_tanh = 1.0 - feat_out**2
+        if feat_out.ndim == 4:
+            J_tanh = J_tanh.view(b, -1)
+            tmp = J_tanh**2 * tmp
+        else:
+            J_tanh = torch.diag_embed(J_tanh.view(b, -1))
+            tmp = torch.einsum("bnm,bnj,bjk->bmk", J_tanh, tmp, J_tanh)
 
-    #  the new weights are the reversed of the old input
-    reversed_input = torch.zeros_like(x)
-    for i in range(h1):
-        for j in range(w1):
-            reversed_input[:,:,i,j] = x[:,:,h1-i-1,w1-j-1]
+    elif isinstance(layer, torch.nn.Upsample):
 
-    breakpoint()
-    return F.conv_transpose2d(
-        # TODO: can we find the structure of the reshape, so we can use an expand instead of reshape.
-        jac_in.movedim((1, 2, 3), (-3, -2, -1)).view(-1, c1, h1, w1),
-        weight=torch.nn.Parameter(reversed_input),
-        bias=None,
-        stride=layer.stride[0],
-        padding=dw_padding,
-        dilation=layer.dilation[0],
-        groups=layer.groups,
-        output_padding=0,
-    ).reshape(b, *jac_in.shape[4:], c2, h2, w2).movedim((-3, -2, -1), (1, 2, 3))
+        xs = feat_in.shape
+        vs = feat_out.shape
 
+        dims1 = tuple(range(1, feat_in.ndim))
+        dims2 = tuple(range(-feat_in.ndim + 1, 0))
 
-def jacobian_mult_wrt_weights_transpose(layer, x, val, jac_in):
-    breakpoint()
+        F.interpolate(
+            jac_in.movedim(dims1, dims2).reshape(-1, *xs[1:]),
+            layer.size,
+            layer.scale_factor,
+            layer.mode,
+            layer.align_corners,
+        ).reshape(xs[0], *jac_in.shape[feat_in.ndim :], *vs[1:]).movedim(dims2, dims1)
 
-    kernel_size = layer.weight.data.shape[-1]
-    b, c1, h1, w1 = x.shape
-    c2, h2, w2 = val.shape[1:]
-    dw_padding = kernel_size - 1 - layer.padding[0]
+    elif isinstance(layer, torch.nn.MaxPool2d):
 
-    #  the new weights are the reversed of the old input
-    reversed_input = torch.zeros_like(x)
-    for i in range(h1):
-        for j in range(w1):
-            reversed_input[:,:,i,j] = x[:,:,h1-i-1,w1-j-1]
+        new_tmp = torch.zeros_like(feat_in)
+        new_tmp[layer.idx] = tmp
+        tmp = new_tmp
 
-    return F.conv(
-        jac_in.movedim((1, 2, 3), (-3, -2, -1)).reshape(-1, c1, h1, w1),
-        weight=torch.nn.Parameter(reversed_input),
-        bias=None,
-        stride=layer.stride[0],
-        padding=dw_padding,
-        dilation=layer.dilation[0],
-        groups=layer.groups,
-    ).reshape(b, *jac_in.shape[4:], c2, h2, w2).movedim((-3, -2, -1), (1, 2, 3))
+    # parameteric w.r.t. inputs
+    elif isinstance(layer, torch.nn.Linear):
+        tmp = torch.einsum("nm,bnj,jk->bmk", layer.weight, tmp, layer.weight)
+
+    elif isinstance(layer, torch.nn.Conv2d):
+
+        # diagonalize tmp (#TODO: check memory, we don't want to store full tmp.)
+        tmp = torch.diagonal(tmp, dim1=1, dim2=2)
+
+        tmp = conv_jacobian_wrt_input_diag_sandwich(layer, feat_in, feat_out, tmp)
+
+    else:
+        breakpoint()
+        print(f"The jacobian wrt. input of {layer} is not implemented yet")
+        raise NotImplementedError
+
+    return tmp
 
 
 def compute_hessian(x, feature_maps, net, output_size, h_scale):
@@ -144,81 +147,17 @@ def compute_hessian(x, feature_maps, net, output_size, h_scale):
 
     with torch.no_grad():
         for k in range(len(net) - 1, -1, -1):
-            
-            # parameter w.r.t weight
-            if isinstance(net[k], torch.nn.Linear):
-                diag_elements = torch.diagonal(tmp, dim1=1, dim2=2)
-                feature_map_k2 = (feature_maps[k] ** 2).unsqueeze(1)
 
-                h_k = torch.bmm(diag_elements.unsqueeze(2), feature_map_k2).view(bs, -1)
+            # jacobian w.r.t weight
+            h_k = compute_jac_wrt_weights(
+                net[k], feature_maps[k], feature_maps[k + 1], tmp
+            )
+            H = [h_k] + H
 
-                # has a bias
-                if net[k].bias is not None:
-                    h_k = torch.cat([h_k, diag_elements], dim=1)
-
-                H = [h_k] + H
-
-            elif isinstance(net[k], torch.nn.Conv2d):
-
-                b, c, h, w = feature_maps[k].shape
-                B = c*h*w
-                breakpoint()
-                # create identity matrix in order to call jacobian_mult to get jacobian rather than jacobian_mult
-                # TODO: try torch.repeat, torch.expand function to reduce memory
-                base_vector = torch.zeros((b, 1, c, h, w), device=tmp.device).expand(b, c * h * w, c, h, w)
-                for col in range(w):
-                    for row in range(h):
-                        for chan in range(c):
-                            base_vector[:, chan*h*w+row*w+col, chan, row, col] = 1
-                breakpoint()
-                # 1. right product side
-                rps = jacobian_mult_wrt_weights(net[k], feature_maps[k+1], feature_maps[k], base_vector)
-                rps = rps.view(b, B, B)
-
-                # 2. right center product side
-                rcps = torch.einsum("bij,bjk->bik", tmp, rps)
-
-                # 3. the rest
-                rcps = rcps.view(b, B, c, h, w)
-                tmp = jacobian_mult_wrt_weights_transpose(net[k], feature_maps[k+1], feature_maps[k], rcps)
-                tmp = tmp.view(b, B, B)
-
-            # non parametric w.r.t input
-            if isinstance(net[k], torch.nn.Tanh):
-                J_tanh = 1.0 - feature_maps[k + 1] ** 2
-
-                J_tanh = torch.diag_embed(J_tanh.view(b, c*h*w), offset=1)
-
-                # TODO: make more efficent by using row vectors
-                tmp = torch.einsum("bnm,bnj,bjk->bmk", J_tanh, tmp, J_tanh)
-
-            if k == 0:
-                break
-
-            # parameteric w.r.t. inputs
-            if isinstance(net[k], torch.nn.Linear):
-                tmp = torch.einsum("nm,bnj,jk->bmk", net[k].weight, tmp, net[k].weight)
-
-            elif isinstance(net[k], torch.nn.Conv2D):
-                breakpoint()
-                # create identity matrix in order to call jacobian_mult to get jacobian rather than jacobian_mult
-                base_vector = torch.zeros((b, 1, c, h, w), device=tmp.device).expand(b, c * h * w, c, h, w)
-                for col in range(w):
-                    for row in range(h):
-                        for chan in range(c):
-                            base_vector[:, chan*h*w+row*w+col, chan, row, col] = 1
-                breakpoint()
-                # 1. right product side
-                rps = jacobian_mult_wrt_input(net[k], feature_maps[k+1], feature_maps[k], base_vector)
-                rps = rps.view(b, B, B)
-
-                # 2. right center product side
-                rcps = torch.einsum("bij,bjk->bik", tmp, rps)
-
-                # 3. the rest
-                rcps = rcps.view(b, B, c, h, w)
-                tmp = jacobian_mult_wrt_input_transpose(net[k], feature_maps[k+1], feature_maps[k], rcps)
-                tmp = tmp.view(b, B, B)
+            # jacobian w.r.t input
+            tmp = compute_jac_wrt_inputs(
+                net[k], feature_maps[k], feature_maps[k + 1], tmp
+            )
 
     H = torch.cat(H, dim=1)
 
@@ -253,13 +192,13 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         self.constant = 1.0 / (2 * self.sigma_n**2)
 
         self.net = get_model(encoder, decoder)
-        self.output_size = self.net[-1].out_features if config["no_conv"] else 32*32
+        self.output_size = self.net[-1].out_features if config["no_conv"] else 64 * 64
 
         self.feature_maps = []
 
         def fw_hook_get_latent(module, input, output):
             self.feature_maps.append(output.detach())
-        
+
         for k in range(len(self.net)):
             self.net[k].register_forward_hook(fw_hook_get_latent)
 
@@ -318,7 +257,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
             # replace the network parameters with the sampled parameters
             vector_to_parameters(net_sample, self.net.parameters())
-            
+
             # reset or init
             self.feature_maps = []
 
@@ -424,7 +363,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
     def validation_step(self, val_batch, batch_idx):
         x, y = val_batch
-        
+
         if self.no_conv:
             x = x.view(x.size(0), -1)
         else:

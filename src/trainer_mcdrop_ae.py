@@ -32,12 +32,8 @@ class LitDropoutAutoEncoder(pl.LightningModule):
         super().__init__()
 
         latent_size = 2
-        self.encoder = get_encoder(
-            config, latent_size, dropout=config["dropout_rate"]
-        )
-        self.decoder = get_decoder(
-            config, latent_size, dropout=config["dropout_rate"]
-        )
+        self.encoder = get_encoder(config, latent_size, dropout=config["dropout_rate"])
+        self.decoder = get_decoder(config, latent_size, dropout=config["dropout_rate"])
 
     def forward(self, x):
         embedding = self.encoder(x)

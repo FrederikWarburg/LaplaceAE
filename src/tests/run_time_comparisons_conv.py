@@ -22,35 +22,35 @@ from hessian import rowwise as rw
 import matplotlib.pyplot as plt
 import os
 
-def get_model(number_of_layers, device):
+def get_model(channels, number_of_layers, device):
 
-    model = [nn.Linear(data_size, data_size)]
+    model = [nn.Conv2d(channels, channels, kernel_size = 3, padding=1, bias=False)]
     for i in range(number_of_layers):
-        model += [nn.Tanh(), nn.Linear(data_size, data_size)]
-    model = nn.Sequential(*model).to(device)
+        model += [nn.Tanh(), nn.Conv2d(channels, channels, kernel_size = 3, padding=1, bias=False)]
+    model = nn.Sequential(*model, nn.Flatten()).to(device)
 
     return model
 
-def get_model_stochman(number_of_layers, device):
+def get_model_stochman(channels, number_of_layers, device):
 
-    model = [nnj.Linear(data_size, data_size)]
+    model = [nnj.Conv2d(channels, channels, kernel_size = 3, padding=1, bias=False)]
     for i in range(number_of_layers):
-        model += [nnj.Tanh(), nnj.Linear(data_size, data_size)]
-    model = nn.Sequential(*model).to(device)
+        model += [nnj.Tanh(), nnj.Conv2d(channels, channels, kernel_size = 3, padding=1, bias=False)]
+    model = nnj.Sequential(*model).to(device)
 
     return model
 
 def run_la(data_size, number_of_layers):
     num_observations = 1000
+    channels = 10
 
     torch.manual_seed(42)
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    X = torch.rand((num_observations, data_size)).float()
-    
-    dataset = TensorDataset(X, X)
+    X = torch.rand((num_observations, channels, data_size, data_size)).float()
+    dataset = TensorDataset(X, X.view(num_observations, -1))
     dataloader = DataLoader(dataset, batch_size=32)
 
-    model = get_model(number_of_layers, device)
+    model = get_model(channels, number_of_layers, device)
 
     hessian_structure = "diag"
     la = Laplace(
@@ -67,37 +67,37 @@ def run_la(data_size, number_of_layers):
 
 def run_row(data_size, number_of_layers):
     num_observations = 1000
+    channels = 10
 
     torch.manual_seed(42)
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    X = torch.rand((num_observations, data_size)).float()
-    
+    X = torch.rand((num_observations, channels, data_size, data_size)).float()
     dataset = TensorDataset(X, X)
     dataloader = DataLoader(dataset, batch_size=32)
 
-    model = get_model_stochman(number_of_layers, device)
+    model = get_model_stochman(channels, number_of_layers, device)
 
     hessian_structure = "diag"
     t0 = time.perf_counter()
-    Hs_row = rw.MseHessianCalculator(hessian_structure, False).compute(dataloader, model, data_size)
+    Hs_row = rw.MseHessianCalculator(hessian_structure).compute(dataloader, model, data_size)
     elapsed_row = time.perf_counter() - t0
 
     return Hs_row.detach().cpu(), elapsed_row
 
 def run_layer(data_size, number_of_layers):
     num_observations = 1000
+    channels = 10
 
     torch.manual_seed(42)
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    X = torch.rand((num_observations, data_size)).float()
-    
+    X = torch.rand((num_observations, channels, data_size, data_size)).float()
     dataset = TensorDataset(X, X)
     dataloader = DataLoader(dataset, batch_size=32)
 
-    model = get_model_stochman(number_of_layers, device)
+    model = get_model_stochman(channels, number_of_layers, device)
 
     t0 = time.perf_counter()
-    Hs_layer = lw.MseHessianCalculator(False).compute(dataloader, model, data_size)
+    Hs_layer = lw.MseHessianCalculator(True).compute(dataloader, model, data_size)
     elapsed_layer = time.perf_counter() - t0
 
     return Hs_layer.detach().cpu(), elapsed_layer
@@ -134,7 +134,7 @@ def run(data_size, number_of_layers):
     logging.info(f"{elapsed_layer=}")
 
     #torch.testing.assert_close(la.H, Hs_row, rtol=1e-3, atol=0.)  # Less than 0.01% off
-    # torch.testing.assert_close(laH, Hs_layer, rtol=1e-3, atol=0.)  # Less than 0.01% off
+    #torch.testing.assert_close(laH, Hs_layer, rtol=1e-3, atol=0.)  # Less than 0.01% off
     #torch.testing.assert_close(Hs_row, Hs_layer, rtol=1e-3, atol=0.)  # Less than 0.01% off
 
     return elapsed_la, elapsed_layer, mem_la, mem_layer
@@ -143,7 +143,8 @@ if __name__ == "__main__":
     logging.getLogger().setLevel(logging.INFO)
 
     number_of_layers = 5
-    data_sizes = [10, 50, 100, 500, 1000, 1500, 2000, 2500]
+    data_sizes = list(range(5, 25, 5))
+    print(data_sizes)
     elapsed_la, elapsed_row, elapsed_layer = [], [], []
     mem_las, mem_layers = [], []
     for data_size in data_sizes:
@@ -162,8 +163,8 @@ if __name__ == "__main__":
     plt.xlabel("data size")
     plt.ylabel("time")
     plt.tight_layout()
-    os.makedirs("../../figures/run_time_perf", exist_ok=True)
-    plt.savefig("../../figures/run_time_perf/time_data_sizes.png")
+    os.makedirs("../../figures/run_time_perf_conv", exist_ok=True)
+    plt.savefig("../../figures/run_time_perf_conv/time_data_sizes.png")
     plt.close(); plt.cla(); plt.gcf()
 
     plt.plot(data_sizes, mem_las, "-o", label="la")
@@ -173,12 +174,11 @@ if __name__ == "__main__":
     plt.xlabel("data size")
     plt.ylabel("mem")
     plt.tight_layout()
-    os.makedirs("../../figures/run_time_perf", exist_ok=True)
-    plt.savefig("../../figures/run_time_perf/mem_data_sizes.png")
+    plt.savefig("../../figures/run_time_perf_conv/mem_data_sizes.png")
     plt.close(); plt.cla(); plt.gcf()
 
-    data_size = 500
-    number_of_layers = list(range(10, 130, 10))
+    data_size = 15
+    number_of_layers = list(range(1, 20, 5))
     elapsed_la, elapsed_row, elapsed_layer = [], [], []
     mem_las, mem_layers = [], []
     for layers in number_of_layers:
@@ -197,7 +197,7 @@ if __name__ == "__main__":
     plt.xlabel("layers")
     plt.ylabel("time")
     plt.tight_layout()
-    plt.savefig("../../figures/run_time_perf/time_network_sizes.png")
+    plt.savefig("../../figures/run_time_perf_conv/time_network_sizes.png")
     plt.close(); plt.cla(); plt.gcf()
 
     plt.plot(number_of_layers, mem_las, "-o", label="la")
@@ -207,6 +207,5 @@ if __name__ == "__main__":
     plt.xlabel("layers")
     plt.ylabel("memory")
     plt.tight_layout()
-    os.makedirs("../../figures/run_time_perf", exist_ok=True)
-    plt.savefig("../../figures/run_time_perf/mem_network_sizes.png")
+    plt.savefig("../../figures/run_time_perf_conv/mem_network_sizes.png")
     plt.close(); plt.cla(); plt.gcf()

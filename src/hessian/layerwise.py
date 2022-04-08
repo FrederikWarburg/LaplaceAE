@@ -1,9 +1,13 @@
+from builtins import breakpoint
 import copy
 from abc import abstractmethod
 
 import torch
 from torch.nn.utils import parameters_to_vector
 
+import sys
+sys.path.append("../stochman")
+from stochman import nnj
 
 class HessianCalculator:
     def __init__(self):
@@ -35,56 +39,57 @@ class HessianCalculator:
 
 
 class MseHessianCalculator(HessianCalculator):
-    def __init__(self):
+    def __init__(self, diag):
         super(MseHessianCalculator, self).__init__() 
 
-    def compute_batch(self, model, output_size, x, *args, **kwargs):
+        self.diag = diag
+
+    def compute_batch(self, net, output_size, x, *args, **kwargs):
         x = x.to(self.device)
-        bs = x.shape[0]
+        H = []
 
         self.feature_maps = []
-        model(x)
-        self.feature_maps = [x] + self.feature_maps
+        net(x)
 
-        # Saves the product of the Jacobians wrt layer input
+        if x.ndim == 4:
+            bs, c, h, w = x.shape
+            output_size = c*h*w
+        else:
+            bs, output_size = x.shape
+
+        self.feature_maps = [x] + self.feature_maps
         tmp = torch.diag_embed(torch.ones(bs, output_size, device=x.device))
 
-        H = []
+        if self.diag:
+            tmp = torch.diagonal(tmp, dim1=1, dim2=2)
+
         with torch.no_grad():
-            for k in range(len(model) - 1, -1, -1):
-                if isinstance(model[k], torch.nn.Linear):
+            for k in range(len(net) - 1, -1, -1):
+                
+                if isinstance(net[k], nnj.Reshape):
+                    self.diag = False
+                    tmp = torch.diag_embed(tmp, dim1=1, dim2=2)
+                elif isinstance(net[k], nnj.Flatten):
+                    self.diag = True
+                    tmp = torch.diagonal(tmp, dim1=1, dim2=2)
+                
+                # jacobian w.r.t weight
+                h_k = net[k]._jacobian_wrt_weight_sandwich(
+                    self.feature_maps[k],
+                    self.feature_maps[k + 1],
+                    tmp,
+                    diag=self.diag,
+                )
+                if h_k is not None:
+                    H = [h_k.sum(dim=0)] + H
+                
+                # jacobian w.r.t input
+                tmp = net[k]._jacobian_wrt_input_sandwich(
+                    self.feature_maps[k],
+                    self.feature_maps[k + 1],
+                    tmp,
+                    diag=self.diag,
+                )
+        H = torch.cat(H, dim=0)
 
-                    diag_elements = torch.einsum("bii->bi", tmp)
-                    h_k = torch.einsum("bi,bj,bj->bij", diag_elements,
-                                       self.feature_maps[k], self.feature_maps[k])
-
-                    h_k = h_k.view(bs, -1)
-                    if model[k].bias is not None:
-                        h_k = torch.cat([h_k, diag_elements], dim=1)
-
-                    H = [h_k] + H
-
-                if k == 0:
-                    break
-
-                # Calculate the Jacobian wrt to the inputs
-                if isinstance(model[k], torch.nn.Linear):
-                    jacobian_x = model[k].weight.expand(
-                        (bs, *model[k].weight.shape))
-                elif isinstance(model[k], torch.nn.Tanh):
-                    jacobian_x = torch.diag_embed(
-                        torch.ones(self.feature_maps[k + 1].shape, device=x.device)
-                        - self.feature_maps[k + 1] ** 2
-                    )
-                elif isinstance(model[k], torch.nn.ReLU):
-                    jacobian_x = torch.diag_embed(
-                        (self.feature_maps[k + 1] > 0).float()
-                    )
-                else:
-                    raise NotImplementedError
-
-                # TODO: make more efficent by using row vectors
-                tmp = torch.einsum("bnm,bnj,bjk->bmk", jacobian_x, tmp,
-                                   jacobian_x)
-
-        return torch.cat(H, dim=1).sum(dim=0)
+        return H

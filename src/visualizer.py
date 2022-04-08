@@ -7,6 +7,7 @@ from matplotlib.patches import Ellipse
 import torchmetrics
 import torch
 import json
+import umap
 
 
 def plot_latent_space(
@@ -18,6 +19,13 @@ def plot_latent_space(
     sigma_vector=None,
     n_points_axis=None,
 ):
+
+    N, dim = z.shape
+    if dim > 2:
+        # use umap to project to 2d
+        trans = umap.UMAP(n_neighbors=5, random_state=42).fit(z)
+        z = trans.embedding_
+
     plt.figure()
     if labels is not None:
         for yi in np.unique(labels):
@@ -36,23 +44,24 @@ def plot_latent_space(
     plt.cla()
 
 
-def plot_mnist_reconstructions(path, x, x_rec_mu, x_rec_sigma=None, pre_fix=""):
+def plot_reconstructions(path, x, x_rec_mu, x_rec_sigma=None, pre_fix=""):
+    b, c, h, w = x.shape
 
     for i in range(min(len(x), 10)):
         nplots = 3 if x_rec_sigma is not None else 2
 
         plt.figure()
         plt.subplot(1, nplots, 1)
-        plt.imshow(x[i].reshape(28, 28))
+        plt.imshow(np.squeeze(np.moveaxis(x[i], 0, -1)))
         plt.axis("off")
 
         plt.subplot(1, nplots, 2)
-        plt.imshow(x_rec_mu[i].reshape(28, 28))
+        plt.imshow(np.squeeze(np.moveaxis(x_rec_mu[i], 0, -1)))
         plt.axis("off")
 
         if x_rec_sigma is not None:
             plt.subplot(1, nplots, 3)
-            plt.imshow(x_rec_sigma[i].reshape(28, 28))
+            plt.imshow(np.squeeze(np.moveaxis(x_rec_sigma[i], 0, -1)))
             plt.axis("off")
 
         plt.tight_layout()

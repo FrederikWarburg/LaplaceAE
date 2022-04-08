@@ -271,7 +271,7 @@ def fit_laplace_to_decoder(encoder, decoder, config):
 
 def fit_laplace_to_enc_and_dec(encoder, decoder, config):
 
-    train_loader, val_loader = get_data("mnist_ae", config["batch_size"])
+    train_loader, val_loader = get_data("mnist", config["batch_size"])
 
     # gather encoder and decoder into one model:
     def get_model(encoder, decoder):

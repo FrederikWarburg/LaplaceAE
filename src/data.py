@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from torch.utils.data import DataLoader, TensorDataset, random_split
-from torchvision.datasets import MNIST, KMNIST
+from torchvision.datasets import MNIST, KMNIST, CelebA, CIFAR10
 from torchvision import transforms
 
 
@@ -9,7 +9,7 @@ def get_data(name, batch_size=32):
 
     if name == "mnist":
         dataset = MNIST(
-            "../", train=True, download=True, transform=transforms.ToTensor()
+            "../data/", train=True, download=True, transform=transforms.ToTensor()
         )
         mnist_train, mnist_val = random_split(
             dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
@@ -19,17 +19,7 @@ def get_data(name, batch_size=32):
 
     elif name == "kmnist":
         dataset = KMNIST(
-            "../", train=True, download=True, transform=transforms.ToTensor()
-        )
-        mnist_train, mnist_val = random_split(
-            dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
-        )
-        train_loader = DataLoader(mnist_train, batch_size=batch_size, pin_memory=True)
-        val_loader = DataLoader(mnist_val, batch_size=batch_size, pin_memory=True)
-
-    elif name == "mnist_ae":
-        dataset = MNIST_AE(
-            "../", train=True, download=True, transform=transforms.ToTensor()
+            "../data/", train=True, download=True, transform=transforms.ToTensor()
         )
         mnist_train, mnist_val = random_split(
             dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
@@ -59,6 +49,28 @@ def get_data(name, batch_size=32):
         val_loader = DataLoader(
             TensorDataset(X_val, y_test), batch_size=batch_size, pin_memory=True
         )
+
+    elif name == "celeba":
+        dataset = CelebA(
+            "../data/", split="train", download=True, transform=transforms.ToTensor()
+        )
+        dataset_train, dataset_val = random_split(
+            dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
+        )
+        train_loader = DataLoader(dataset_train, batch_size=batch_size, pin_memory=True)
+        val_loader = DataLoader(dataset_val, batch_size=batch_size, pin_memory=True)
+
+    elif name == "cifar10":
+        # image resolution 32 x 32
+        dataset = CIFAR10(
+            "../data/", train=True, download=True, transform=transforms.ToTensor()
+        )
+        dataset_train, dataset_val = random_split(
+            dataset, [45000, 5000], generator=torch.Generator().manual_seed(42)
+        )
+        train_loader = DataLoader(dataset_train, batch_size=batch_size, pin_memory=True)
+        val_loader = DataLoader(dataset_val, batch_size=batch_size, pin_memory=True)
+
 
     else:
         raise NotImplemplenetError
@@ -93,16 +105,3 @@ def generate_latent_grid(x, n_points_axis=50, batch_size=1):
     )
 
     return xg_mesh, yg_mesh, z_grid_loader
-
-
-class MNIST_AE(MNIST):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # Scale data to [0,1]
-        self.data = self.data.view(self.data.size(0), -1).float()  # .div(255)
-
-    def __getitem__(self, index):
-
-        img, target = self.data[index], self.data[index]
-        return img.view(-1), target.view(-1)

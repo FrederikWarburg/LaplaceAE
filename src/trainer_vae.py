@@ -11,12 +11,12 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from data import get_data, generate_latent_grid
-from models.ae_models import get_encoder, get_decoder
+from models import get_encoder, get_decoder
 from utils import softclip
 import yaml
 import argparse
 from visualizer import (
-    plot_mnist_reconstructions,
+    plot_reconstructions,
     plot_latent_space,
     plot_latent_space_ood,
     plot_ood_distributions,
@@ -259,8 +259,7 @@ def test_vae(config):
         )
 
     # create figures
-    if not os.path.isdir(f"../figures/{path}"):
-        os.makedirs(f"../figures/{path}")
+    os.makedirs(f"../figures/{path}", exist_ok=True)
 
     if config["dataset"] != "mnist":
         labels = None
@@ -311,8 +310,7 @@ def train_vae(config):
 
     # save weights
     path = f"{config['dataset']}/vae_[use_var_dec={config['use_var_decoder']}]"
-    if not os.path.isdir(f"../weights/{path}"):
-        os.makedirs(f"../weights/{path}")
+    os.makedirs(f"../weights/{path}", exist_ok=True)
     torch.save(model.mu_encoder.state_dict(), f"../weights/{path}/mu_encoder.pth")
     torch.save(model.var_encoder.state_dict(), f"../weights/{path}/var_encoder.pth")
     torch.save(model.mu_decoder.state_dict(), f"../weights/{path}/mu_decoder.pth")

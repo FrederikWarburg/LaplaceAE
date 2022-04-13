@@ -23,12 +23,12 @@ from laplace.laplace import Laplace
 
 # from laplace import Laplace
 from data import get_data, generate_latent_grid
-from models.ae_models import get_encoder, get_decoder
+from models import get_encoder, get_decoder
 from utils import save_laplace, load_laplace
 import yaml
 import argparse
 from visualizer import (
-    plot_mnist_reconstructions,
+    plot_reconstructions,
     plot_latent_space,
     plot_latent_space_ood,
     plot_ood_distributions,
@@ -148,8 +148,7 @@ def test_lae_decoder(config):
     )
 
     # create figures
-    if not os.path.isdir(f"../figures/{path}"):
-        os.makedirs(f"../figures/{path}")
+    os.makedirs(f"../figures/{path}", exist_ok=True)
 
     if config["dataset"] != "mnist":
         labels = None
@@ -196,8 +195,7 @@ def test_lae_encoder_decoder(config):
     )
 
     # create figures
-    if not os.path.isdir(f"../figures/{path}"):
-        os.makedirs(f"../figures/{path}")
+    os.makedirs(f"../figures/{path}", exist_ok=True)
 
     if config["dataset"] != "mnist":
         labels = None
@@ -264,8 +262,7 @@ def fit_laplace_to_decoder(encoder, decoder, config):
 
     # save weights
     path = f"../weights/{config['dataset']}/lae_post_hoc_[use_la_encoder=False]"
-    if not os.path.isdir(path):
-        os.makedirs(path)
+    os.makedirs(path, exist_ok=True)
     save_laplace(la, f"{path}/decoder.pkl")
 
 
@@ -302,8 +299,7 @@ def fit_laplace_to_enc_and_dec(encoder, decoder, config):
 
     # save weights
     path = f"../weights/{config['dataset']}/lae_post_hoc_[use_la_encoder=True]"
-    if not os.path.isdir(path):
-        os.makedirs(path)
+    os.makedirs(path, exist_ok=True)
     save_laplace(la, f"{path}/ae.pkl")
 
 

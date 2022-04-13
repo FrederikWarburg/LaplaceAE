@@ -195,7 +195,7 @@ def test_ae(config):
         _, ood_val_loader = get_data(config["ood_dataset"], config["batch_size"])
 
         ood_x, ood_z, ood_x_rec_mu, ood_x_rec_sigma, ood_labels = inference_on_dataset(
-            encoder, mu_decoder, var_decoder, ood_val_loader, device, no_conv
+            encoder, mu_decoder, var_decoder, ood_val_loader, device
         )
 
         plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")

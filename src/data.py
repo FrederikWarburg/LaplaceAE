@@ -69,7 +69,7 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
             transform=transforms.Compose(
                 [
                     transforms.ToTensor(),
-                    transforms.Normalize([0, 0, 0], [255, 255, 255]),
+                    # transforms.Normalize([0, 0, 0], [255, 255, 255]),
                 ]
             ),
         )

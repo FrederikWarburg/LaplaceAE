@@ -1,31 +1,87 @@
 import torch
 import numpy as np
 from torch.utils.data import DataLoader, TensorDataset, random_split
-from torchvision.datasets import MNIST, KMNIST, CelebA, CIFAR10
+from torchvision.datasets import MNIST, KMNIST, CelebA, CIFAR10, FashionMNIST, SVHN
 from torchvision import transforms
 
 
-def get_data(name, batch_size=32):
+def mask_regions(dataset):
+
+    if dataset.data.ndim == 4:
+        n, c, h, w = dataset.data.shape
+    else:
+        n, h, w = dataset.data.shape
+
+    sx, sy = 10, 10
+
+    y = np.random.randint(0, h - sy, n)
+    x = np.random.randint(0, w - sx, n)
+
+    for i, (xi, yi) in enumerate(zip(x, y)):
+
+        if dataset.data.ndim == 4:
+            dataset.data[i, :, xi : xi + sx, yi : yi + sy] = 0
+        else:
+            dataset.data[i, xi : xi + sx, yi : yi + sy] = 0
+
+    return dataset
+
+
+def get_data(name, batch_size=32, missing_data_imputation=False):
 
     if name == "mnist":
         dataset = MNIST(
             "../data/", train=True, download=True, transform=transforms.ToTensor()
         )
-        mnist_train, mnist_val = random_split(
+        train, val = random_split(
             dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
         )
-        train_loader = DataLoader(mnist_train, batch_size=batch_size, pin_memory=True)
-        val_loader = DataLoader(mnist_val, batch_size=batch_size, pin_memory=True)
+        train_loader = DataLoader(train, batch_size=batch_size, pin_memory=True)
+        val_loader = DataLoader(val, batch_size=batch_size, pin_memory=True)
 
     elif name == "kmnist":
         dataset = KMNIST(
             "../data/", train=True, download=True, transform=transforms.ToTensor()
         )
-        mnist_train, mnist_val = random_split(
+        train, val = random_split(
             dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
         )
-        train_loader = DataLoader(mnist_train, batch_size=batch_size, pin_memory=True)
-        val_loader = DataLoader(mnist_val, batch_size=batch_size, pin_memory=True)
+        train_loader = DataLoader(train, batch_size=batch_size, pin_memory=True)
+        val_loader = DataLoader(val, batch_size=batch_size, pin_memory=True)
+
+    elif name == "fashionmnist":
+
+        dataset = FashionMNIST(
+            "../data/", train=True, download=True, transform=transforms.ToTensor()
+        )
+        train, val = random_split(
+            dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
+        )
+        train_loader = DataLoader(train, batch_size=batch_size, pin_memory=True)
+        val_loader = DataLoader(val, batch_size=batch_size, pin_memory=True)
+
+    elif name == "svhn":
+
+        dataset = SVHN(
+            "../data/",
+            split="train",
+            download=True,
+            transform=transforms.Compose(
+                [
+                    transforms.ToTensor(),
+                    transforms.Normalize([0, 0, 0], [255, 255, 255]),
+                ]
+            ),
+        )
+
+        if missing_data_imputation:
+            dataset = mask_regions(dataset)
+
+        train, val = random_split(
+            dataset, [73257 - 5000, 5000], generator=torch.Generator().manual_seed(42)
+        )
+        train_loader = DataLoader(train, batch_size=batch_size, pin_memory=True)
+        val_loader = DataLoader(val, batch_size=batch_size, pin_memory=True)
 
     elif name == "swissrole":
         N_train = 50000
@@ -70,7 +126,6 @@ def get_data(name, batch_size=32):
         )
         train_loader = DataLoader(dataset_train, batch_size=batch_size, pin_memory=True)
         val_loader = DataLoader(dataset_val, batch_size=batch_size, pin_memory=True)
-
 
     else:
         raise NotImplemplenetError

@@ -11,7 +11,7 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import yaml
 import argparse
 from data import get_data, generate_latent_grid
-from models.ae_models import get_encoder, get_decoder
+from models import get_encoder, get_decoder
 from utils import softclip
 from visualizer import (
     plot_reconstructions,
@@ -86,22 +86,21 @@ class LitAutoEncoder(pl.LightningModule):
         self.log("val_loss", loss)
 
 
-def inference_on_dataset(encoder, mu_decoder, var_decoder, val_loader, device, no_conv):
+def inference_on_dataset(encoder, mu_decoder, var_decoder, val_loader, device):
 
     x, z, x_rec_mu, x_rec_sigma, labels = [], [], [], [], []
     for i, (xi, yi) in tqdm(enumerate(val_loader)):
         b, c, h, w = xi.shape
-        if no_conv:
-            xi = xi.view(xi.size(0), -1)
+
         xi = xi.to(device)
 
         with torch.inference_mode():
             zi = encoder(xi)
             x_reci = mu_decoder(zi)
 
-            x += [xi.view(b,c,h,w).cpu()]
+            x += [xi.view(b, c, h, w).cpu()]
             z += [zi.cpu()]
-            x_rec_mu += [x_reci.view(b,c,h,w).cpu()]
+            x_rec_mu += [x_reci.view(b, c, h, w).cpu()]
             labels += [yi]
 
             if var_decoder is not None:
@@ -149,7 +148,7 @@ def inference_on_latent_grid(mu_decoder, var_decoder, z, device):
 
 
 def test_ae(config):
-    
+
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     path = f"{config['dataset']}/ae_[use_var_dec={config['use_var_decoder']}]"
@@ -168,40 +167,38 @@ def test_ae(config):
         var_decoder = None
 
     _, val_loader = get_data(config["dataset"], config["batch_size"])
-    if config["ood"]:
-        _, ood_val_loader = get_data(config["ood_dataset"], config["batch_size"])
-    no_conv = config["no_conv"]
 
     # forward eval
     x, z, x_rec_mu, x_rec_sigma, labels = inference_on_dataset(
-        encoder, mu_decoder, var_decoder, val_loader, device, no_conv
+        encoder, mu_decoder, var_decoder, val_loader, device
     )
-    if config["ood"]:
-        ood_x, ood_z, ood_x_rec_mu, ood_x_rec_sigma, ood_labels = inference_on_dataset(
-            encoder, mu_decoder, var_decoder, ood_val_loader, device, no_conv
-        )
-    
+
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = None, None, None, None
     if config["use_var_decoder"]:
         xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
-            mu_decoder, var_decoder, z, device,
+            mu_decoder,
+            var_decoder,
+            z,
+            device,
         )
 
     # create figures
-    if not os.path.isdir(f"../figures/{path}"):
-        os.makedirs(f"../figures/{path}")
+    os.makedirs(f"../figures/{path}", exist_ok=True)
 
     if config["dataset"] == "swissrole":
         labels = None
 
     plot_latent_space(path, z, labels, xg_mesh, yg_mesh, sigma_vector, n_points_axis)
 
-    
     plot_reconstructions(path, x, x_rec_mu, x_rec_sigma)
     if config["ood"]:
-        plot_reconstructions(
-            path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_"
+        _, ood_val_loader = get_data(config["ood_dataset"], config["batch_size"])
+
+        ood_x, ood_z, ood_x_rec_mu, ood_x_rec_sigma, ood_labels = inference_on_dataset(
+            encoder, mu_decoder, var_decoder, ood_val_loader, device, no_conv
         )
+
+        plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
 
         plot_ood_distributions(path, None, None, x_rec_sigma, ood_x_rec_sigma)
 
@@ -234,8 +231,8 @@ def train_ae(config):
 
     # save weights
     path = f"{config['dataset']}/ae_[use_var_dec={config['use_var_decoder']}]"
-    if not os.path.isdir(f"../weights/{path}"):
-        os.makedirs(f"../weights/{path}")
+
+    os.makedirs(f"../weights/{path}", exist_ok=True)
     torch.save(model.encoder.state_dict(), f"../weights/{path}/encoder.pth")
     torch.save(model.mu_decoder.state_dict(), f"../weights/{path}/mu_decoder.pth")
     if config["use_var_decoder"]:

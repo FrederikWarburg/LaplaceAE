@@ -6,11 +6,11 @@ train : True
 ood : False
 
 # data
-dataset : "cifar10"
+dataset : "svhn"
 ood_dataset : "cifar10"
 batch_size: 128
     
 # model
 use_var_decoder : False
 no_conv : False
-latent_size : 64
+latent_size : 32

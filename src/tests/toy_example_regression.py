@@ -122,8 +122,7 @@ def compute_hessian_laplace_redux(model, dataloader):
 
     # save weights
     path = f"../../weights/toy_regression_example/"
-    if not os.path.isdir(path):
-        os.makedirs(path)
+    os.makedirs(path, exist_ok=True)
     save_laplace(la, f"{path}/laplace.pkl")
 
     print(la.H)

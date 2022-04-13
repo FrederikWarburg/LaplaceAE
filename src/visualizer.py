@@ -46,7 +46,7 @@ def plot_latent_space(
 
 def plot_reconstructions(path, x, x_rec_mu, x_rec_sigma=None, pre_fix=""):
     b, c, h, w = x.shape
-    
+
     for i in range(min(len(x), 10)):
         nplots = 3 if x_rec_sigma is not None else 2
 

@@ -52,10 +52,11 @@ def get_gpu_memory_map() -> Dict[str, float]:
 
     # Convert lines into a dictionary
     gpu_memory = [float(x) for x in result.stdout.strip().split(os.linesep)]
-    gpu_memory_map = {f"gpu_id: {gpu_id}/memory.used (MB)": memory for gpu_id, memory in enumerate(gpu_memory)}
+    gpu_memory_map = {
+        f"gpu_id: {gpu_id}/memory.used (MB)": memory
+        for gpu_id, memory in enumerate(gpu_memory)
+    }
     return gpu_memory_map
-
-
 
 
 def get_model(number_of_layers, device):
@@ -148,9 +149,13 @@ def run_layer(data_size, number_of_layers):
 def run(data_size, number_of_layers):
 
     torch.cuda.empty_cache()
-    with profile(activities=[ProfilerActivity.CPU],
-        profile_memory=True, record_shapes=True, use_cuda=True) as prof:        
-            laH, elapsed_la = run_la(data_size, number_of_layers)
+    with profile(
+        activities=[ProfilerActivity.CPU],
+        profile_memory=True,
+        record_shapes=True,
+        use_cuda=True,
+    ) as prof:
+        laH, elapsed_la = run_la(data_size, number_of_layers)
 
     breakpoint()
     print(prof.key_averages().table(sort_by="self_cpu_memory_usage", row_limit=10))

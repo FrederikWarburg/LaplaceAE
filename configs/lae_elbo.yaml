@@ -3,7 +3,7 @@
 exp_name : ""
 
 # training
-train : False
+train : True
 kl_weight: 1e-6
 train_samples: 10
 
@@ -19,9 +19,9 @@ batch_size: 24
     
 # model
 pretrained : False
-no_conv : True
+no_conv : False
 latent_size : 2
 
 # hessian
-backend : "stochman"
+backend : "layer" # choose layer, row, backpack
 diag : False

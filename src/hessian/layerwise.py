@@ -105,11 +105,11 @@ class MseHessianCalculator(HessianCalculator):
         H = []
         with torch.no_grad():
             for k in range(len(net) - 1, -1, -1):
-
+                
                 if self.method == "mix":
                     tmp, curr_method = swap_curr_method(net[k], tmp, curr_method)
                     diag_inp_m, diag_out_m, diag_inp_h, diag_out_h = diag_structure(curr_method)
-
+                
                 # jacobian w.r.t weight
                 h_k = net[k]._jacobian_wrt_weight_sandwich(
                     feature_maps[k],
@@ -120,7 +120,7 @@ class MseHessianCalculator(HessianCalculator):
                 )
                 if h_k is not None:
                     H = [h_k.sum(dim=0)] + H
-
+                
                 # jacobian w.r.t input
                 tmp = net[k]._jacobian_wrt_input_sandwich(
                     feature_maps[k],

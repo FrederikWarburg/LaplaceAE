@@ -31,13 +31,12 @@ from hessian import layerwise as lw
 from hessian import backpack as bp
 from backpack import extend
 from utils import create_exp_name
+from hessian import sampler
 
-
-def sample(parameters, posterior_scale, n_samples=100):
-    n_params = len(parameters)
-    samples = torch.randn(n_samples, n_params, device="cuda:0")
-    samples = samples * posterior_scale.reshape(1, n_params)
-    return parameters.reshape(1, n_params) + samples
+samples = {"block" : sampler.BlockSampler,
+            "exact" : sampler.DiagSampler,
+            "approx" : sampler.DiagSampler,
+            "mix" : sampler.DiagSampler}
 
 
 def get_model(encoder, decoder):
@@ -80,6 +79,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
         if config["backend"] == "backpack":
             self.HessianCalculator = bp.MseHessianCalculator()
+            self.sampler = sampler.DiagSampler()
             self.net = extend(self.net)
 
         else:
@@ -91,12 +91,10 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             for k in range(len(self.net)):
                 self.net[k].register_forward_hook(fw_hook_get_latent)
 
-            self.HessianCalculator = lw.MseHessianCalculator(config["diag"])
+            self.HessianCalculator = lw.MseHessianCalculator(config["approximation"])
+            self.sampler = samples[config["approximation"]]()
 
-        s = self.dataset_size
-        self.hessian = s * torch.ones_like(
-            parameters_to_vector(self.net.parameters()), device=device
-        )
+        self.hessian = self.sampler.init_hessian(self.dataset_size, self.net, device)
 
         # logging of time:
         self.timings = {
@@ -121,28 +119,18 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         x, y = train_batch
         b, c, h, w = x.shape
 
-        if self.no_conv:
-            x = x.view(x.size(0), -1)
-
         # compute kl
-        sigma_q = 1 / (self.hessian + 1e-6)
-
+        sigma_q = self.sampler.invert(self.hessian)
         mu_q = parameters_to_vector(self.net.parameters())
-        k = len(mu_q)
+        
+        kl = self.sampler.kl_div(mu_q, sigma_q)
 
-        kl = 0.5 * (
-            torch.log(1.0 / sigma_q)
-            - k
-            + torch.matmul(mu_q.T, mu_q)
-            + torch.sum(sigma_q)
-        )
-
-        mse = []
+        mse_running_sum = 0
         hessian = []
         x_recs = []
 
         # draw samples from the nn (sample nn)
-        samples = sample(mu_q, sigma_q, n_samples=self.config["train_samples"])
+        samples = self.sampler.sample(mu_q, sigma_q, n_samples=self.config["train_samples"])
         for net_sample in samples:
 
             # replace the network parameters with the sampled parameters
@@ -158,28 +146,24 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             self.timings["forward_nn"] += time.time() - start
 
             # compute mse for sample net
-            mse_s = F.mse_loss(x_rec, x)
+            mse_running_sum += F.mse_loss(x_rec, x)
 
             # compute hessian for sample net
             start = time.time()
 
             # H = J^T J
             h_s = self.HessianCalculator.__call__(self.net, self.feature_maps, x)
-            h_s = h_s / b * self.dataset_size
+            h_s = self.sampler.scale(h_s, b, self.dataset_size)
 
             self.timings["compute_hessian"] += time.time() - start
 
             # append results
-            mse.append(mse_s)
             hessian.append(h_s)
             x_recs.append(x_rec)
 
         # note that + 1 is the identity which is the hessian of the KL term
-        hessian = torch.stack(hessian).mean(dim=0) if len(hessian) > 1 else hessian[0]
-        self.hessian = self.constant * hessian + 1
-
-        assert hessian.mean(dim=0).min() >= 0, "hessian of mse has negative values"
-        mse = torch.stack(mse).mean() if len(mse) > 1 else mse[0]
+        self.hessian = self.sampler.aveage_hessian_samples(hessian, self.constant)
+        mse = mse_running_sum / self.config["train_samples"]
         loss = self.constant * mse + self.kl_weight * kl.mean()
 
         # reset the network parameters with the mean parameter (MAP estimate parameters)
@@ -201,19 +185,16 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         self.timings["compute_hessian"] = 0
 
         # log sigma_q
-        ratio = abs(sigma_q) / abs(mu_q)
-        if self.current_epoch > self.last_epoch_logged:
-            self.logger.experiment.add_histogram(
-                "train/sigma_q", sigma_q, self.current_epoch
-            )
-            self.logger.experiment.add_histogram(
-                "train/ratio_weight_sigma_q", ratio, self.current_epoch
-            )
+        if self.config["approximation"] != "block":
+            if self.current_epoch > self.last_epoch_logged:
+                self.logger.experiment.add_histogram(
+                    "train/sigma_q", sigma_q, self.current_epoch
+                )
 
-        self.log("sigma_q/max", torch.max(sigma_q))
-        self.log("sigma_q/min", torch.min(sigma_q))
-        self.log("sigma_q/mean", torch.mean(sigma_q))
-        self.log("sigma_q/median", torch.median(sigma_q))
+            self.log("sigma_q/max", torch.max(sigma_q))
+            self.log("sigma_q/min", torch.min(sigma_q))
+            self.log("sigma_q/mean", torch.mean(sigma_q))
+            self.log("sigma_q/median", torch.median(sigma_q))
 
         # log images
         if self.current_epoch > self.last_epoch_logged:

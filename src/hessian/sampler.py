@@ -112,7 +112,7 @@ class BlockSampler(Sampler):
                     tmp += hessian[s][i]
 
             tmp = tmp / n_samples
-            tmp = constant * tmp + 1
+            tmp = constant * tmp + torch.diag_embed(torch.ones(len(tmp), device=tmp.device))
             hessian_mean.append(tmp)
 
         return hessian_mean

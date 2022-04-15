@@ -118,7 +118,12 @@ def run_layer(data_size, number_of_layers, diag_tmp):
     Hs_layer = lw.MseHessianCalculator(diag_tmp).compute(dataloader, model, data_size)
     elapsed_layer = time.perf_counter() - t0
 
-    return Hs_layer.detach().cpu(), elapsed_layer
+    if isinstance(Hs_layer, list):
+        Hs_layer = [l.cpu() for l in Hs_layer]
+    else:
+        Hs_layer.cpu()
+        
+    return Hs_layer, elapsed_layer
 
 
 def run_backpack(data_size, number_of_layers):
@@ -167,11 +172,17 @@ if __name__ == "__main__":
 
     _, gpu_memory_before = get_gpu_memory_map()
 
-    if args.backend == "layer_diag":
-        H, t = run_layer(args.data_size, args.number_of_layers, True)
+    if args.backend == "layer_block":
+        H, t = run_layer(args.data_size, args.number_of_layers, "block")
 
-    elif args.backend == "layer":
-        H, t = run_layer(args.data_size, args.number_of_layers, False)
+    elif args.backend == "layer_exact":
+        H, t = run_layer(args.data_size, args.number_of_layers, "exact")
+
+    elif args.backend == "layer_approx":
+        H, t = run_layer(args.data_size, args.number_of_layers, "approx")
+
+    elif args.backend == "layer_mix":
+        H, t = run_layer(args.data_size, args.number_of_layers, "mix")
 
     elif args.backend == "row":
         H, t = run_row(args.data_size, args.number_of_layers)

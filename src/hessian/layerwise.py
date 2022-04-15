@@ -11,10 +11,32 @@ sys.path.append("../stochman")
 from stochman import nnj
 
 
+def diag_structure(method):
+
+    diag_inp_m = method == "approx"
+    diag_out_m = method in ("approx", "exact") 
+    diag_inp_h = method == "approx"
+    diag_out_h = method == "approx"
+
+    return diag_inp_m, diag_out_m, diag_inp_h, diag_out_h
+
+def swap_curr_method(layer, tmp, curr_method):
+                        
+    if isinstance(layer, nnj.Reshape) and curr_method == "approx":
+        curr_method = "exact"
+        tmp = torch.diag_embed(tmp, dim1=1, dim2=2)
+    elif isinstance(layer, nnj.Flatten) and curr_method == "exact":
+        curr_method = "approx"
+        tmp = torch.diagonal(tmp, dim1=1, dim2=2)
+
+    return tmp, curr_method
+
+
 class HessianCalculator:
     def __init__(self):
         super(HessianCalculator, self).__init__()
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        
 
     @abstractmethod
     def compute_batch(self, *args, **kwargs):
@@ -22,11 +44,10 @@ class HessianCalculator:
 
     def compute(self, loader, model, output_size):
         # keep track of running sum
-        H_running_sum = torch.zeros_like(parameters_to_vector(model.parameters()))
+        H_running_sum = None
         counter = 0
 
         self.feature_maps = []
-
         def fw_hook_get_latent(module, input, output):
             self.feature_maps.append(output.detach())
 
@@ -35,16 +56,22 @@ class HessianCalculator:
 
         for batch in loader:
             H = self.compute_batch(model, output_size, *batch)
-            H_running_sum += H
+            if H_running_sum is None:
+                H_running_sum = H
+
+            if isinstance(H, list):
+                H_running_sum = [h_sum + h for h_sum, h in zip(H_running_sum, H)]
+            else:
+                H_running_sum += H
 
         return H_running_sum
 
 
 class MseHessianCalculator(HessianCalculator):
-    def __init__(self, diag):
+    def __init__(self, method):
         super(MseHessianCalculator, self).__init__()
 
-        self.diag = diag
+        self.method = method # block, exact, approx, mix
 
     def compute_batch(self, net, output_size, x, *args, **kwargs):
         x = x.to(self.device)
@@ -63,30 +90,33 @@ class MseHessianCalculator(HessianCalculator):
             bs, output_size = x.shape
 
         feature_maps = [x] + feature_maps
-        tmp = torch.diag_embed(torch.ones(bs, output_size, device=x.device))
 
-        if self.diag:
-            tmp = torch.diagonal(tmp, dim1=1, dim2=2)
+
+        # if we use diagonal approximation or first layer is flatten
+        tmp = torch.ones(output_size, device=x.device)
+        if self.method in ("block", "exact"):
+            tmp = torch.diag_embed(tmp).expand(bs,-1,-1)
+        elif self.method in ("approx", "mix"):
+            tmp = tmp.expand(bs,-1)
+
+        curr_method = "approx" if self.method == "mix" else self.method
+        diag_inp_m, diag_out_m, diag_inp_h, diag_out_h = diag_structure(curr_method)
 
         H = []
         with torch.no_grad():
             for k in range(len(net) - 1, -1, -1):
 
-                if isinstance(net[k], nnj.Reshape):
-                    self.diag = False
-                    tmp = torch.diag_embed(tmp, dim1=1, dim2=2)
-                elif isinstance(net[k], nnj.Flatten) and k > 0:
-                    # if it is the first layer, then don't use diagonal approximation.
-                    # since this just means that we have a linaer network.
-                    self.diag = True
-                    tmp = torch.diagonal(tmp, dim1=1, dim2=2)
+                if self.method == "mix":
+                    tmp, curr_method = swap_curr_method(net[k], tmp, curr_method)
+                    diag_inp_m, diag_out_m, diag_inp_h, diag_out_h = diag_structure(curr_method)
 
                 # jacobian w.r.t weight
                 h_k = net[k]._jacobian_wrt_weight_sandwich(
                     feature_maps[k],
                     feature_maps[k + 1],
                     tmp,
-                    diag=self.diag,
+                    diag_inp_m,
+                    diag_out_m,
                 )
                 if h_k is not None:
                     H = [h_k.sum(dim=0)] + H
@@ -96,8 +126,14 @@ class MseHessianCalculator(HessianCalculator):
                     feature_maps[k],
                     feature_maps[k + 1],
                     tmp,
-                    diag=self.diag,
+                    diag_inp_h,
+                    diag_out_h,
                 )
-        H = torch.cat(H, dim=0)
+
+        if self.method == "block":
+            H = [H_layer for H_layer in H]
+        else:
+            H = torch.cat(H, dim=0)
 
         return H
+

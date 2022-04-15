@@ -2,7 +2,7 @@
 
 number_of_layers=3
 data_sizes=(2 4 8 16 24 32 48 64)
-backends=("layer" "layer_diag" "row" "la" "backpack")
+backends=("layer_block" "layer_exact" "layer_approx" "layer_mix" "row" "la" "backpack")
 
 for size in ${data_sizes[@]}
 do
@@ -15,7 +15,7 @@ done
 
 number_of_layers=(3 5 10 20 30 40 50 60 70 80 90 100)
 data_sizes=16
-backends=("layer" "layer_diag" "row" "la" "backpack")
+backends=("layer_block" "layer_exact" "layer_approx" "layer_mix" "row" "la" "backpack")
 
 for layers in ${number_of_layers[@]}
 do

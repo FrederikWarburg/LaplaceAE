@@ -73,7 +73,6 @@ class Decoder_conv(torch.nn.Module):
         self.latent_size = latent_size
 
         self.decoder = nn.Sequential(
-            nn.Tanh(),
             nn.Linear(self.latent_size, 7 * 7 * 12),
             nn.Unflatten(1, (12, 7, 7)),
             nn.Tanh(),

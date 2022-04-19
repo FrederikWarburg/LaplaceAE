@@ -1,5 +1,6 @@
 from builtins import breakpoint
 import os
+from sched import scheduler
 
 import torch
 from torch import nn
@@ -25,8 +26,10 @@ from visualizer import (
     plot_latent_space_ood,
     plot_ood_distributions,
     compute_and_plot_roc_curves,
+    save_metric,
+    plot_calibration_plot,
 )
-
+import numpy as np
 from hessian import layerwise as lw
 from hessian import backpack as bp
 from backpack import extend
@@ -111,7 +114,12 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
-        return optimizer
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
+        return {
+           'optimizer': optimizer,
+           'lr_scheduler': scheduler, 
+           'monitor': 'val_loss'
+       }
 
     def training_step(self, train_batch, batch_idx):
         self.timings["entire_training_step"] = time.time()
@@ -146,7 +154,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             self.timings["forward_nn"] += time.time() - start
 
             # compute mse for sample net
-            mse_running_sum += F.mse_loss(x_rec, x)
+            mse_running_sum += F.mse_loss(x_rec.view(*x.shape), x)
 
             # compute hessian for sample net
             start = time.time()
@@ -265,12 +273,12 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
 
     def fw_hook_get_latent(module, input, output):
         z_i.append(output.detach().cpu())
-
-    hook = net[latent_dim].register_forward_hook(fw_hook_get_latent)
-
-    x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = [], [], [], [], [], []
+    
+    hook = net[latent_dim - 1].register_forward_hook(fw_hook_get_latent)
+    
+    x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse = [], [], [], [], [], [], []
     for i, (xi, yi) in tqdm(enumerate(val_loader)):
-        xi = xi.view(xi.size(0), -1).to(device)
+        xi = xi.to(device)
         with torch.inference_mode():
 
             x_reci = []
@@ -299,17 +307,21 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
             labels += [yi]
             x += [xi.cpu()]
 
+            mse += [F.mse_loss(x_reci_mu.view(*xi.shape), xi).cpu()]
+            # nll += []
+
     x = torch.cat(x, dim=0).numpy()
     labels = torch.cat(labels, dim=0).numpy()
     z_mu = torch.stack(z_mu).numpy()
     z_sigma = torch.stack(z_sigma).numpy()
     x_rec_mu = torch.stack(x_rec_mu).numpy()
     x_rec_sigma = torch.stack(x_rec_sigma).numpy()
+    mse = torch.stack(mse).numpy()
 
     # remove forward hook
     hook.remove()
 
-    return x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels
+    return x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse
 
 
 def inference_on_latent_grid(net, samples, z_mu, latent_dim, dummy):
@@ -328,7 +340,7 @@ def inference_on_latent_grid(net, samples, z_mu, latent_dim, dummy):
         return hook
 
     all_f_mu, all_f_sigma = [], []
-    for z_grid in tqdm(z_grid_loader):
+    for i, z_grid in enumerate(tqdm(z_grid_loader)):
 
         z_grid = z_grid[0].to(device)
         replace_hook = net[latent_dim].register_forward_pre_hook(modify_input(z_grid))
@@ -355,9 +367,12 @@ def inference_on_latent_grid(net, samples, z_mu, latent_dim, dummy):
     f_mu = torch.stack(all_f_mu)
     f_sigma = torch.stack(all_f_sigma)
 
-    # get diagonal elements
+    # average over samples
     sigma_vector = f_sigma.mean(axis=1)
 
+    # average over diagonal elements
+    sigma_vector = sigma_vector.view(n_points_axis**2, -1).mean(axis=1)
+    
     return xg_mesh, yg_mesh, sigma_vector, n_points_axis
 
 
@@ -373,22 +388,27 @@ def test_lae(config, batch_size=1):
     latent_dim = len(encoder.encoder)  # latent dim after encoder
     net = get_model(encoder, decoder).eval().to(device)
     net.load_state_dict(torch.load(f"../weights/{path}/net.pth"))
+    
+    hessian_approx = sampler.BlockSampler() if config["approximation"] == "block" else sampler.DiagSampler()
 
     h = torch.load(f"../weights/{path}/hessian.pth")
-    sigma_q = 1 / (h + 1e-6)
+    sigma_q = hessian_approx.invert(h)
 
     # draw samples from the nn (sample nn)
     mu_q = parameters_to_vector(net.parameters())
-    samples = sample(mu_q, sigma_q, n_samples=config["test_samples"])
+    samples = hessian_approx.sample(mu_q, sigma_q, n_samples=config["test_samples"])
 
     _, val_loader = get_data(
         config["dataset"], batch_size, config["missing_data_imputation"]
     )
 
     # evaluate on dataset
-    x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = inference_on_dataset(
+    x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse = inference_on_dataset(
         net, samples, val_loader, latent_dim
     )
+    
+    nll = (x_rec_mu - np.reshape(x, x_rec_mu.shape))**2 / (2*x_rec_sigma**2) + 1/2 * np.log( x_rec_sigma**2 )
+    save_metric(path, "nll", nll.sum())
 
     # evaluate on latent grid representation
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
@@ -409,6 +429,12 @@ def test_lae(config, batch_size=1):
 
     plot_reconstructions(path, x, x_rec_mu, x_rec_sigma)
 
+    save_metric(path, "mse", mse.sum())
+
+    plot_calibration_plot(path, mse, x_rec_sigma)
+
+    plot_calibration_plot(path, mse, z_sigma, pre_fix="latent_")
+
     # evaluate on OOD dataset
     if config["ood"]:
         assert not config["missing_data_imputation"]
@@ -421,6 +447,7 @@ def test_lae(config, batch_size=1):
             ood_x_rec_mu,
             ood_x_rec_sigma,
             ood_labels,
+            ood_mse,
         ) = inference_on_dataset(net, samples, ood_val_loader, latent_dim)
 
         plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
@@ -435,6 +462,7 @@ def test_lae(config, batch_size=1):
         compute_and_plot_roc_curves(
             path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_"
         )
+
 
 
 def train_lae(config):
@@ -452,7 +480,7 @@ def train_lae(config):
     logger = TensorBoardLogger(save_dir="../lightning_log", name=name)
 
     # early stopping
-    callbacks = [EarlyStopping(monitor="val_loss")]
+    callbacks = [EarlyStopping(monitor="val_loss", patience=15)]
 
     # training
     n_device = torch.cuda.device_count()

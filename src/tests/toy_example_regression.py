@@ -232,7 +232,6 @@ if __name__ == "__main__":
     if laplace_ours:
         H_our = compute_hessian_ours(dataset, model)
 
-    breakpoint()
     plt.plot(H - H_our.numpy(), "-o")
     plt.savefig("../../figures/toy_regression_example/diff_hessains.png")
     plt.cla()

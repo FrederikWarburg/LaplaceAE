@@ -26,6 +26,6 @@ def create_exp_name(config):
 
     for key in ["backend", "approximation", "no_conv", "train_samples"]:
         if key in config:
-            name += f"[{key}]_{config[key]}"
+            name += f"[{key}_{config[key]}]_"
 
     return name

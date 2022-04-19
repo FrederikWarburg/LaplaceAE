@@ -46,7 +46,7 @@ def plot_latent_space(
 
 def plot_reconstructions(path, x, x_rec_mu, x_rec_sigma=None, pre_fix=""):
     b, c, h, w = x.shape
-
+    
     for i in range(min(len(x), 10)):
         nplots = 3 if x_rec_sigma is not None else 2
 
@@ -56,12 +56,12 @@ def plot_reconstructions(path, x, x_rec_mu, x_rec_sigma=None, pre_fix=""):
         plt.axis("off")
 
         plt.subplot(1, nplots, 2)
-        plt.imshow(np.squeeze(np.moveaxis(x_rec_mu[i], 0, -1)))
+        plt.imshow(np.squeeze(np.moveaxis(np.reshape(x_rec_mu[i], x[i].shape), 0, -1)))
         plt.axis("off")
 
         if x_rec_sigma is not None:
             plt.subplot(1, nplots, 3)
-            plt.imshow(np.squeeze(np.moveaxis(x_rec_sigma[i], 0, -1)))
+            plt.imshow(np.squeeze(np.moveaxis(np.reshape(x_rec_sigma[i], x[i].shape), 0, -1)))
             plt.axis("off")
 
         plt.tight_layout()
@@ -73,7 +73,6 @@ def plot_reconstructions(path, x, x_rec_mu, x_rec_sigma=None, pre_fix=""):
 def plot_latent_space_ood(
     path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
 ):
-
     max_ = np.max([np.max(z_sigma), np.max(ood_z_sigma)])
     min_ = np.min([np.min(z_sigma), np.min(ood_z_sigma)])
 
@@ -219,3 +218,35 @@ def compute_and_plot_roc_curves(path, id_sigma, ood_sigma, pre_fix=""):
     # save metrics
     with open(f"../figures/{path}/{pre_fix}ood_metrics.json", "w") as outfile:
         json.dump(metrics, outfile)
+
+
+def save_metric(path, name, val):
+    
+    metrics = {"val" : float(val)}
+    # save metrics
+    with open(f"../figures/{path}/metric_{name}.json", "w") as outfile:
+        json.dump(metrics, outfile)
+
+
+def plot_calibration_plot(path, mse, sigma, pre_fix=""):
+    
+    bs = sigma.shape[0]
+    sigma = np.reshape(sigma, (bs, -1)).sum(axis=1)
+    counts, bins = np.histogram(sigma, bins=10)
+    error_per_bin = []
+    for i in range(len(bins)-1):
+        bin_idx = np.logical_and(sigma >= bins[i], sigma <= bins[i+1])
+        error_per_bin.append(mse[bin_idx].mean())
+
+    error_per_bin = np.asarray(error_per_bin)[1:]
+    
+    fig, ax = plt.subplots(1, 1, figsize=(9, 9))
+    plt.plot(bins,error_per_bin)
+    plt.xlabel("sigma")
+    plt.ylabel("mse")
+    plt.legend()
+    fig.savefig(f"../figures/{path}/{pre_fix}_calibration_plot.png")
+    plt.cla()
+    plt.close()
+
+

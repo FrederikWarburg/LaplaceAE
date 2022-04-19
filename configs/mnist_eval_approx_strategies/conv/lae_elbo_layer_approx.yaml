@@ -1,6 +1,6 @@
 
 # experiment name
-exp_name : "eval_approx_strategies/approx"
+exp_name : "eval_approx_strategies/"
 
 # training
 train : True

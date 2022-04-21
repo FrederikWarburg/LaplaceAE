@@ -5,44 +5,30 @@ Code for Laplace Auto-Encoding Bayes and the associate baseline methods.
 ## Setup
 
 ```
+git clone https://github.com/FrederikWarburg/LaplaceAE;
+cd LaplaceAE;
 git clone https://github.com/FrederikWarburg/Laplace;
+git clone https://github.com/FrederikWarburg/stochman;
+cd stochman;
+python setup.py install;
 ```
 This should give you a folder structure like this:
 
 ```
 * Laplace
+* stochman
 * src
-   * ae_models.py
+   * hessian
+   * models
+   * tests
    * ...
 ```
 
 ## Train & Test
 
-To train and test a VAE on MNIST run:
+To train and test a LAE:
 
 ```
-cd src; CUDA_VISIBLE_DEVICES=0 python trainer_vae.py
+cd src; 
+CUDA_VISIBLE_DEVICES=0 python trainer_lae_elbo.py --config PATH_TO_CONFIG
 ```
-
-To train AE  on MNIST run:
-
-```
-cd src; CUDA_VISIBLE_DEVICES=0 python trainer_ae.py
-```
-
-
-To train LAE  on MNIST run:
-
-```
-cd src; CUDA_VISIBLE_DEVICES=0 python trainer_lae.py
-```
-
-
-To train and test a AE and then LAE on MNIST run:
-
-```
-cd src; CUDA_VISIBLE_DEVICES=0 python trainer_e2e.py
-```
-
-You can run ```trainer_lae.py``` if you only want to train the Laplace approximation and ```trainer_ae.py``` if you only want to train an autoencoder.
-

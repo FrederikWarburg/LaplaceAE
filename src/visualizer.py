@@ -230,23 +230,62 @@ def save_metric(path, name, val):
 
 def plot_calibration_plot(path, mse, sigma, pre_fix=""):
     
+    calibration_data = {}
+
     bs = sigma.shape[0]
     sigma = np.reshape(sigma, (bs, -1)).sum(axis=1)
     counts, bins = np.histogram(sigma, bins=10)
+
+    ###
+    # plot a calibration plot and histogram with number of obs in each bin
+    ###
+
     error_per_bin = []
     for i in range(len(bins)-1):
         bin_idx = np.logical_and(sigma >= bins[i], sigma <= bins[i+1])
         error_per_bin.append(mse[bin_idx].mean())
-
-    error_per_bin = np.asarray(error_per_bin)[1:]
+    error_per_bin = np.asarray(error_per_bin)
     
     fig, ax = plt.subplots(1, 1, figsize=(9, 9))
-    plt.plot(bins,error_per_bin)
+    plt.plot((bins[1:] + bins[:1])/2,error_per_bin, '-o')
     plt.xlabel("sigma")
     plt.ylabel("mse")
-    plt.legend()
-    fig.savefig(f"../figures/{path}/{pre_fix}_calibration_plot.png")
+    fig.savefig(f"../figures/{path}/{pre_fix}calibration_plot.png")
     plt.cla()
     plt.close()
 
+    fig, ax = plt.subplots(1, 1, figsize=(9, 9))
+    plt.hist(sigma, bins=bins)
+    plt.xlabel("sigma")
+    plt.ylabel("count")
+    fig.savefig(f"../figures/{path}/{pre_fix}calibration_hist.png")
+    plt.cla()
+    plt.close()
 
+    calibration_data["value"] = {"bins" : list(bins.astype(float)), "error_per_bin" : list(error_per_bin.astype(float))}
+
+    ###
+    # plot a calibration plot with equal number of obs in each bin
+    ###
+
+    idx = np.argsort(sigma)
+    size = int(len(sigma) // (len(bins) - 1))
+    error_per_bin = []
+    for i in range(len(bins)-1):
+        bin_idx = idx[i*size:(i+1)*size]
+        error_per_bin.append(mse[bin_idx].mean())
+    error_per_bin = np.asarray(error_per_bin)
+
+    fig, ax = plt.subplots(1, 1, figsize=(9, 9))
+    plt.plot(np.linspace(0, 100, len(error_per_bin)),error_per_bin, '-o')
+    plt.xlabel("percentile")
+    plt.ylabel("mse")
+    fig.savefig(f"../figures/{path}/{pre_fix}calibration_plot_equal_count.png")
+    plt.cla()
+    plt.close()
+
+    calibration_data["count"] = {"bins" : list(np.linspace(0, 100, len(error_per_bin)).astype(float)), "error_per_bin" : list(error_per_bin.astype(float))}
+    
+    # save metrics
+    with open(f"../figures/{path}/{pre_fix}calibration_data.json", "w") as outfile:
+        json.dump(calibration_data, outfile)

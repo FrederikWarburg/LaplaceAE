@@ -3,7 +3,7 @@
 exp_name : "eval_approx_strategies/"
 
 # training
-train : True
+train : False
 kl_weight: 1e-6
 train_samples: 10
 

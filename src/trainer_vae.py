@@ -11,12 +11,12 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from data import get_data, generate_latent_grid
-from models.ae_models import get_encoder, get_decoder
+from models import get_encoder, get_decoder
 from utils import softclip
 import yaml
 import argparse
 from visualizer import (
-    plot_mnist_reconstructions,
+    plot_reconstructions,
     plot_latent_space,
     plot_latent_space_ood,
     plot_ood_distributions,
@@ -33,13 +33,13 @@ class LitVariationalAutoEncoder(pl.LightningModule):
         self.use_var_decoder = config["use_var_decoder"]
 
         latent_size = 2
-        self.mu_encoder = get_encoder(config["dataset"], latent_size)
-        self.var_encoder = get_encoder(config["dataset"], latent_size)
+        self.mu_encoder = get_encoder(config, latent_size)
+        self.var_encoder = get_encoder(config, latent_size)
 
-        self.mu_decoder = get_decoder(config["dataset"], latent_size)
+        self.mu_decoder = get_decoder(config, latent_size)
 
         if self.use_var_decoder:
-            self.var_decoder = get_decoder(config["dataset"], latent_size)
+            self.var_decoder = get_decoder(config, latent_size)
 
     def forward(self, x):
         mean = self.mu_encoder(x)
@@ -220,16 +220,16 @@ def test_vae(config):
     path = f"{config['dataset']}/vae_[use_var_dec={config['use_var_decoder']}]"
 
     latent_size = 2
-    mu_encoder = get_encoder(config["dataset"], latent_size).eval().to(device)
-    var_encoder = get_encoder(config["dataset"], latent_size).eval().to(device)
+    mu_encoder = get_encoder(config, latent_size).eval().to(device)
+    var_encoder = get_encoder(config, latent_size).eval().to(device)
     mu_encoder.load_state_dict(torch.load(f"../weights/{path}/mu_encoder.pth"))
     var_encoder.load_state_dict(torch.load(f"../weights/{path}/var_encoder.pth"))
 
-    mu_decoder = get_decoder(config["dataset"], latent_size).eval().to(device)
+    mu_decoder = get_decoder(config, latent_size).eval().to(device)
     mu_decoder.load_state_dict(torch.load(f"../weights/{path}/mu_decoder.pth"))
 
     if config["use_var_decoder"]:
-        var_decoder = get_decoder(config["dataset"], latent_size).eval().to(device)
+        var_decoder = get_decoder(config, latent_size).eval().to(device)
         var_decoder.load_state_dict(torch.load(f"../weights/{path}/var_decoder.pth"))
     else:
         var_decoder = None
@@ -259,8 +259,7 @@ def test_vae(config):
         )
 
     # create figures
-    if not os.path.isdir(f"../figures/{path}"):
-        os.makedirs(f"../figures/{path}")
+    os.makedirs(f"../figures/{path}", exist_ok=True)
 
     if config["dataset"] != "mnist":
         labels = None
@@ -311,8 +310,7 @@ def train_vae(config):
 
     # save weights
     path = f"{config['dataset']}/vae_[use_var_dec={config['use_var_decoder']}]"
-    if not os.path.isdir(f"../weights/{path}"):
-        os.makedirs(f"../weights/{path}")
+    os.makedirs(f"../weights/{path}", exist_ok=True)
     torch.save(model.mu_encoder.state_dict(), f"../weights/{path}/mu_encoder.pth")
     torch.save(model.var_encoder.state_dict(), f"../weights/{path}/var_encoder.pth")
     torch.save(model.mu_decoder.state_dict(), f"../weights/{path}/mu_decoder.pth")

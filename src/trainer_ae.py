@@ -11,26 +11,27 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import yaml
 import argparse
 from data import get_data, generate_latent_grid
-from models.ae_models import get_encoder, get_decoder
+from models import get_encoder, get_decoder
 from utils import softclip
 from visualizer import (
-    plot_mnist_reconstructions,
+    plot_reconstructions,
     plot_latent_space,
     plot_ood_distributions,
 )
 
 
 class LitAutoEncoder(pl.LightningModule):
-    def __init__(self, dataset, use_var_decoder):
+    def __init__(self, config):
         super().__init__()
 
-        self.use_var_decoder = use_var_decoder
+        self.use_var_decoder = config["use_var_decoder"]
+        self.no_conv = config["no_conv"]
+        self.latent_size = config["latent_size"]
 
-        latent_size = 2
-        self.encoder = get_encoder(dataset, latent_size)
-        self.mu_decoder = get_decoder(dataset, latent_size)
+        self.encoder = get_encoder(config, self.latent_size)
+        self.mu_decoder = get_decoder(config, self.latent_size)
         if self.use_var_decoder:
-            self.var_decoder = get_decoder(dataset, latent_size)
+            self.var_decoder = get_decoder(config, self.latent_size)
 
     def forward(self, x):
         embedding = self.encoder(x)
@@ -42,7 +43,8 @@ class LitAutoEncoder(pl.LightningModule):
 
     def training_step(self, train_batch, batch_idx):
         x, y = train_batch
-        x = x.view(x.size(0), -1)
+        if self.no_conv:
+            x = x.view(x.size(0), -1)
 
         z = self.encoder(x)
         mu_x_hat = self.mu_decoder(z)
@@ -63,7 +65,9 @@ class LitAutoEncoder(pl.LightningModule):
 
     def validation_step(self, val_batch, batch_idx):
         x, y = val_batch
-        x = x.view(x.size(0), -1)
+
+        if self.no_conv:
+            x = x.view(x.size(0), -1)
 
         z = self.encoder(x)
         mu_x_hat = self.mu_decoder(z)
@@ -86,14 +90,17 @@ def inference_on_dataset(encoder, mu_decoder, var_decoder, val_loader, device):
 
     x, z, x_rec_mu, x_rec_sigma, labels = [], [], [], [], []
     for i, (xi, yi) in tqdm(enumerate(val_loader)):
-        xi = xi.view(xi.size(0), -1).to(device)
+        b, c, h, w = xi.shape
+
+        xi = xi.to(device)
+
         with torch.inference_mode():
             zi = encoder(xi)
             x_reci = mu_decoder(zi)
 
-            x += [xi.cpu()]
+            x += [xi.view(b, c, h, w).cpu()]
             z += [zi.cpu()]
-            x_rec_mu += [x_reci.cpu()]
+            x_rec_mu += [x_reci.view(b, c, h, w).cpu()]
             labels += [yi]
 
             if var_decoder is not None:
@@ -146,54 +153,54 @@ def test_ae(config):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     path = f"{config['dataset']}/ae_[use_var_dec={config['use_var_decoder']}]"
 
-    latent_size = 2
-    encoder = get_encoder(config["dataset"], latent_size).eval().to(device)
+    latent_size = config["latent_size"]
+    encoder = get_encoder(config, latent_size).eval().to(device)
     encoder.load_state_dict(torch.load(f"../weights/{path}/encoder.pth"))
 
-    mu_decoder = get_decoder(config["dataset"], latent_size).eval().to(device)
+    mu_decoder = get_decoder(config, latent_size).eval().to(device)
     mu_decoder.load_state_dict(torch.load(f"../weights/{path}/mu_decoder.pth"))
 
     if config["use_var_decoder"]:
-        var_decoder = get_decoder(config["dataset"], latent_size).eval().to(device)
+        var_decoder = get_decoder(config, latent_size).eval().to(device)
         var_decoder.load_state_dict(torch.load(f"../weights/{path}/var_decoder.pth"))
     else:
         var_decoder = None
 
     _, val_loader = get_data(config["dataset"], config["batch_size"])
-    _, ood_val_loader = get_data(config["ood_dataset"], config["batch_size"])
 
     # forward eval
     x, z, x_rec_mu, x_rec_sigma, labels = inference_on_dataset(
         encoder, mu_decoder, var_decoder, val_loader, device
     )
 
-    ood_x, ood_z, ood_x_rec_mu, ood_x_rec_sigma, ood_labels = inference_on_dataset(
-        encoder, mu_decoder, var_decoder, ood_val_loader, device
-    )
-
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = None, None, None, None
     if config["use_var_decoder"]:
         xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
-            mu_decoder, var_decoder, z, device
+            mu_decoder,
+            var_decoder,
+            z,
+            device,
         )
 
     # create figures
-    if not os.path.isdir(f"../figures/{path}"):
-        os.makedirs(f"../figures/{path}")
+    os.makedirs(f"../figures/{path}", exist_ok=True)
 
-    if config["dataset"] != "mnist":
+    if config["dataset"] == "swissrole":
         labels = None
 
     plot_latent_space(path, z, labels, xg_mesh, yg_mesh, sigma_vector, n_points_axis)
 
-    if config["dataset"] == "mnist":
-        plot_mnist_reconstructions(path, x, x_rec_mu, x_rec_sigma)
-    if config["ood_dataset"] == "kmnist":
-        plot_mnist_reconstructions(
-            path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_"
+    plot_reconstructions(path, x, x_rec_mu, x_rec_sigma)
+    if config["ood"]:
+        _, ood_val_loader = get_data(config["ood_dataset"], config["batch_size"])
+
+        ood_x, ood_z, ood_x_rec_mu, ood_x_rec_sigma, ood_labels = inference_on_dataset(
+            encoder, mu_decoder, var_decoder, ood_val_loader, device
         )
 
-    plot_ood_distributions(path, None, None, x_rec_sigma, ood_x_rec_sigma)
+        plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
+
+        plot_ood_distributions(path, None, None, x_rec_sigma, ood_x_rec_sigma)
 
 
 def train_ae(config):
@@ -202,7 +209,7 @@ def train_ae(config):
     train_loader, val_loader = get_data(config["dataset"])
 
     # model
-    model = LitAutoEncoder(config["dataset"], config["use_var_decoder"])
+    model = LitAutoEncoder(config)
 
     # default logger used by trainer
     logger = TensorBoardLogger(save_dir="../", version=1, name="lightning_logs")
@@ -224,8 +231,8 @@ def train_ae(config):
 
     # save weights
     path = f"{config['dataset']}/ae_[use_var_dec={config['use_var_decoder']}]"
-    if not os.path.isdir(f"../weights/{path}"):
-        os.makedirs(f"../weights/{path}")
+
+    os.makedirs(f"../weights/{path}", exist_ok=True)
     torch.save(model.encoder.state_dict(), f"../weights/{path}/encoder.pth")
     torch.save(model.mu_decoder.state_dict(), f"../weights/{path}/mu_decoder.pth")
     if config["use_var_decoder"]:

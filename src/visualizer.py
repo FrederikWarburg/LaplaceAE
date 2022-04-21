@@ -7,6 +7,7 @@ from matplotlib.patches import Ellipse
 import torchmetrics
 import torch
 import json
+import umap
 
 
 def plot_latent_space(
@@ -18,6 +19,13 @@ def plot_latent_space(
     sigma_vector=None,
     n_points_axis=None,
 ):
+
+    N, dim = z.shape
+    if dim > 2:
+        # use umap to project to 2d
+        trans = umap.UMAP(n_neighbors=5, random_state=42).fit(z)
+        z = trans.embedding_
+
     plt.figure()
     if labels is not None:
         for yi in np.unique(labels):
@@ -36,23 +44,24 @@ def plot_latent_space(
     plt.cla()
 
 
-def plot_mnist_reconstructions(path, x, x_rec_mu, x_rec_sigma=None, pre_fix=""):
-
+def plot_reconstructions(path, x, x_rec_mu, x_rec_sigma=None, pre_fix=""):
+    b, c, h, w = x.shape
+    
     for i in range(min(len(x), 10)):
         nplots = 3 if x_rec_sigma is not None else 2
 
         plt.figure()
         plt.subplot(1, nplots, 1)
-        plt.imshow(x[i].reshape(28, 28))
+        plt.imshow(np.squeeze(np.moveaxis(x[i], 0, -1)))
         plt.axis("off")
 
         plt.subplot(1, nplots, 2)
-        plt.imshow(x_rec_mu[i].reshape(28, 28))
+        plt.imshow(np.squeeze(np.moveaxis(np.reshape(x_rec_mu[i], x[i].shape), 0, -1)))
         plt.axis("off")
 
         if x_rec_sigma is not None:
             plt.subplot(1, nplots, 3)
-            plt.imshow(x_rec_sigma[i].reshape(28, 28))
+            plt.imshow(np.squeeze(np.moveaxis(np.reshape(x_rec_sigma[i], x[i].shape), 0, -1)))
             plt.axis("off")
 
         plt.tight_layout()
@@ -64,7 +73,6 @@ def plot_mnist_reconstructions(path, x, x_rec_mu, x_rec_sigma=None, pre_fix=""):
 def plot_latent_space_ood(
     path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
 ):
-
     max_ = np.max([np.max(z_sigma), np.max(ood_z_sigma)])
     min_ = np.min([np.min(z_sigma), np.min(ood_z_sigma)])
 
@@ -202,9 +210,82 @@ def compute_and_plot_roc_curves(path, id_sigma, ood_sigma, pre_fix=""):
 
     # compute auroc
     auroc = torchmetrics.AUROC(num_classes=1)
-    auroc_score = auroc(torch.tensor(pred).unsqueeze(1), torch.tensor(target).unsqueeze(1))
+    auroc_score = auroc(
+        torch.tensor(pred).unsqueeze(1), torch.tensor(target).unsqueeze(1)
+    )
     metrics["auroc"] = float(auroc_score.numpy())
 
     # save metrics
     with open(f"../figures/{path}/{pre_fix}ood_metrics.json", "w") as outfile:
         json.dump(metrics, outfile)
+
+
+def save_metric(path, name, val):
+    
+    metrics = {"val" : float(val)}
+    # save metrics
+    with open(f"../figures/{path}/metric_{name}.json", "w") as outfile:
+        json.dump(metrics, outfile)
+
+
+def plot_calibration_plot(path, mse, sigma, pre_fix=""):
+    
+    calibration_data = {}
+
+    bs = sigma.shape[0]
+    sigma = np.reshape(sigma, (bs, -1)).sum(axis=1)
+    counts, bins = np.histogram(sigma, bins=10)
+
+    ###
+    # plot a calibration plot and histogram with number of obs in each bin
+    ###
+
+    error_per_bin = []
+    for i in range(len(bins)-1):
+        bin_idx = np.logical_and(sigma >= bins[i], sigma <= bins[i+1])
+        error_per_bin.append(mse[bin_idx].mean())
+    error_per_bin = np.asarray(error_per_bin)
+    
+    fig, ax = plt.subplots(1, 1, figsize=(9, 9))
+    plt.plot((bins[1:] + bins[:1])/2,error_per_bin, '-o')
+    plt.xlabel("sigma")
+    plt.ylabel("mse")
+    fig.savefig(f"../figures/{path}/{pre_fix}calibration_plot.png")
+    plt.cla()
+    plt.close()
+
+    fig, ax = plt.subplots(1, 1, figsize=(9, 9))
+    plt.hist(sigma, bins=bins)
+    plt.xlabel("sigma")
+    plt.ylabel("count")
+    fig.savefig(f"../figures/{path}/{pre_fix}calibration_hist.png")
+    plt.cla()
+    plt.close()
+
+    calibration_data["value"] = {"bins" : list(bins.astype(float)), "error_per_bin" : list(error_per_bin.astype(float))}
+
+    ###
+    # plot a calibration plot with equal number of obs in each bin
+    ###
+
+    idx = np.argsort(sigma)
+    size = int(len(sigma) // (len(bins) - 1))
+    error_per_bin = []
+    for i in range(len(bins)-1):
+        bin_idx = idx[i*size:(i+1)*size]
+        error_per_bin.append(mse[bin_idx].mean())
+    error_per_bin = np.asarray(error_per_bin)
+
+    fig, ax = plt.subplots(1, 1, figsize=(9, 9))
+    plt.plot(np.linspace(0, 100, len(error_per_bin)),error_per_bin, '-o')
+    plt.xlabel("percentile")
+    plt.ylabel("mse")
+    fig.savefig(f"../figures/{path}/{pre_fix}calibration_plot_equal_count.png")
+    plt.cla()
+    plt.close()
+
+    calibration_data["count"] = {"bins" : list(np.linspace(0, 100, len(error_per_bin)).astype(float)), "error_per_bin" : list(error_per_bin.astype(float))}
+    
+    # save metrics
+    with open(f"../figures/{path}/{pre_fix}calibration_data.json", "w") as outfile:
+        json.dump(calibration_data, outfile)

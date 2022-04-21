@@ -10,11 +10,11 @@ import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from data import get_data, generate_latent_grid
-from models.ae_models import get_encoder, get_decoder
+from models import get_encoder, get_decoder
 import yaml
 import argparse
 from visualizer import (
-    plot_mnist_reconstructions,
+    plot_reconstructions,
     plot_latent_space,
     plot_latent_space_ood,
     plot_ood_distributions,
@@ -32,12 +32,8 @@ class LitDropoutAutoEncoder(pl.LightningModule):
         super().__init__()
 
         latent_size = 2
-        self.encoder = get_encoder(
-            config["dataset"], latent_size, dropout=config["dropout_rate"]
-        )
-        self.decoder = get_decoder(
-            config["dataset"], latent_size, dropout=config["dropout_rate"]
-        )
+        self.encoder = get_encoder(config, latent_size, dropout=config["dropout_rate"])
+        self.decoder = get_decoder(config, latent_size, dropout=config["dropout_rate"])
 
     def forward(self, x):
         embedding = self.encoder(x)
@@ -184,7 +180,7 @@ def test_mcdropout_ae(config):
 
     latent_size = 2
     encoder = (
-        get_encoder(config["dataset"], latent_size, dropout=config["dropout_rate"])
+        get_encoder(config, latent_size, dropout=config["dropout_rate"])
         .eval()
         .to(device)
     )
@@ -193,7 +189,7 @@ def test_mcdropout_ae(config):
     )
 
     decoder = (
-        get_decoder(config["dataset"], latent_size, dropout=config["dropout_rate"])
+        get_decoder(config, latent_size, dropout=config["dropout_rate"])
         .eval()
         .to(device)
     )
@@ -226,8 +222,7 @@ def test_mcdropout_ae(config):
     )
 
     # create figures
-    if not os.path.isdir(f"../figures/{path}/"):
-        os.makedirs(f"../figures/{path}/")
+    os.makedirs(f"../figures/{path}/", exist_ok=True)
 
     if config["dataset"] != "mnist":
         labels = None
@@ -235,11 +230,9 @@ def test_mcdropout_ae(config):
     plot_latent_space(path, z_mu, labels, xg_mesh, yg_mesh, sigma_vector, n_points_axis)
 
     if config["dataset"] == "mnist":
-        plot_mnist_reconstructions(path, x, x_rec_mu, x_rec_sigma)
+        plot_reconstructions(path, x, x_rec_mu, x_rec_sigma)
     if config["ood_dataset"] == "kmnist":
-        plot_mnist_reconstructions(
-            path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_"
-        )
+        plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
 
     plot_latent_space_ood(
         path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels

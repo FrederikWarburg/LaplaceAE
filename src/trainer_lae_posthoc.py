@@ -23,12 +23,12 @@ from laplace.laplace import Laplace
 
 # from laplace import Laplace
 from data import get_data, generate_latent_grid
-from models.ae_models import get_encoder, get_decoder
+from models import get_encoder, get_decoder
 from utils import save_laplace, load_laplace
 import yaml
 import argparse
 from visualizer import (
-    plot_mnist_reconstructions,
+    plot_reconstructions,
     plot_latent_space,
     plot_latent_space_ood,
     plot_ood_distributions,
@@ -126,7 +126,7 @@ def test_lae_decoder(config):
     path = f"{config['dataset']}/lae_post_hoc_[use_la_encoder=False]"
 
     latent_size = 2
-    encoder = get_encoder(config["dataset"], latent_size).eval().to(device)
+    encoder = get_encoder(config, latent_size).eval().to(device)
     encoder.load_state_dict(
         torch.load(f"../weights/mnist/ae_[use_var_dec=False]/encoder.pth")
     )
@@ -148,8 +148,7 @@ def test_lae_decoder(config):
     )
 
     # create figures
-    if not os.path.isdir(f"../figures/{path}"):
-        os.makedirs(f"../figures/{path}")
+    os.makedirs(f"../figures/{path}", exist_ok=True)
 
     if config["dataset"] != "mnist":
         labels = None
@@ -196,8 +195,7 @@ def test_lae_encoder_decoder(config):
     )
 
     # create figures
-    if not os.path.isdir(f"../figures/{path}"):
-        os.makedirs(f"../figures/{path}")
+    os.makedirs(f"../figures/{path}", exist_ok=True)
 
     if config["dataset"] != "mnist":
         labels = None
@@ -264,14 +262,13 @@ def fit_laplace_to_decoder(encoder, decoder, config):
 
     # save weights
     path = f"../weights/{config['dataset']}/lae_post_hoc_[use_la_encoder=False]"
-    if not os.path.isdir(path):
-        os.makedirs(path)
+    os.makedirs(path, exist_ok=True)
     save_laplace(la, f"{path}/decoder.pkl")
 
 
 def fit_laplace_to_enc_and_dec(encoder, decoder, config):
 
-    train_loader, val_loader = get_data("mnist_ae", config["batch_size"])
+    train_loader, val_loader = get_data("mnist", config["batch_size"])
 
     # gather encoder and decoder into one model:
     def get_model(encoder, decoder):
@@ -302,8 +299,7 @@ def fit_laplace_to_enc_and_dec(encoder, decoder, config):
 
     # save weights
     path = f"../weights/{config['dataset']}/lae_post_hoc_[use_la_encoder=True]"
-    if not os.path.isdir(path):
-        os.makedirs(path)
+    os.makedirs(path, exist_ok=True)
     save_laplace(la, f"{path}/ae.pkl")
 
 
@@ -312,8 +308,8 @@ def train_lae(config):
     # initialize_model
     latent_size = 2
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    encoder = get_encoder(config["dataset"], latent_size).eval().to(device)
-    decoder = get_decoder(config["dataset"], latent_size).eval().to(device)
+    encoder = get_encoder(config, latent_size).eval().to(device)
+    decoder = get_decoder(config, latent_size).eval().to(device)
 
     # load model weights
     path = f"../weights/{config['dataset']}/ae_[use_var_dec=False]"

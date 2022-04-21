@@ -1,27 +1,27 @@
 
 # experiment name
-exp_name : ""
+exp_name : "eval_approx_strategies/"
 
 # training
-train : True
+train : False
 kl_weight: 1e-6
 train_samples: 10
 
 # test
-ood : False
+ood : True
 missing_data_imputation : False
 test_samples: 100
 
 # data
 dataset : "mnist"
 ood_dataset : "kmnist"
-batch_size: 24
+batch_size: 12
     
 # model
 pretrained : False
-no_conv : False
+no_conv : True
 latent_size : 2
 
 # hessian
-backend : "layer" # choose layer, row, backpack
-diag : False
+backend : "layer" 
+approximation : "exact"

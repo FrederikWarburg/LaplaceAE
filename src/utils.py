@@ -18,3 +18,14 @@ def load_laplace(filepath):
     with open(filepath, "rb") as inpt:
         la = dill.load(inpt)
     return la
+
+
+def create_exp_name(config):
+
+    name = config["exp_name"]
+
+    for key in ["backend", "approximation", "no_conv", "train_samples"]:
+        if key in config:
+            name += f"[{key}_{config[key]}]_"
+
+    return name

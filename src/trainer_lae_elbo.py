@@ -11,6 +11,7 @@ import time
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+from pytorch_lightning.callbacks import LearningRateMonitor
 from datetime import datetime
 from data import get_data, generate_latent_grid
 from models import get_encoder, get_decoder
@@ -36,10 +37,12 @@ from backpack import extend
 from utils import create_exp_name
 from hessian import sampler
 
-samples = {"block" : sampler.BlockSampler,
-            "exact" : sampler.DiagSampler,
-            "approx" : sampler.DiagSampler,
-            "mix" : sampler.DiagSampler}
+samples = {
+    "block": sampler.BlockSampler,
+    "exact": sampler.DiagSampler,
+    "approx": sampler.DiagSampler,
+    "mix": sampler.DiagSampler,
+}
 
 
 def get_model(encoder, decoder):
@@ -108,18 +111,20 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         self.last_epoch_logged = -1
         self.last_epoch_logged_val = -1
 
+        self.save_hyperparameters(config)
+
     def forward(self, x):
         out = self.net(x)
         return out
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=5)
         return {
-           'optimizer': optimizer,
-           'lr_scheduler': scheduler, 
-           'monitor': 'val_loss'
-       }
+            "optimizer": optimizer,
+            "lr_scheduler": scheduler,
+            "monitor": "val_loss",
+        }
 
     def training_step(self, train_batch, batch_idx):
         self.timings["entire_training_step"] = time.time()
@@ -130,7 +135,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         # compute kl
         sigma_q = self.sampler.invert(self.hessian)
         mu_q = parameters_to_vector(self.net.parameters())
-        
+
         kl = self.sampler.kl_div(mu_q, sigma_q)
 
         mse_running_sum = 0
@@ -138,7 +143,9 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         x_recs = []
 
         # draw samples from the nn (sample nn)
-        samples = self.sampler.sample(mu_q, sigma_q, n_samples=self.config["train_samples"])
+        samples = self.sampler.sample(
+            mu_q, sigma_q, n_samples=self.config["train_samples"]
+        )
         for net_sample in samples:
 
             # replace the network parameters with the sampled parameters
@@ -273,9 +280,9 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
 
     def fw_hook_get_latent(module, input, output):
         z_i.append(output.detach().cpu())
-    
+
     hook = net[latent_dim - 1].register_forward_hook(fw_hook_get_latent)
-    
+
     x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse = [], [], [], [], [], [], []
     for i, (xi, yi) in tqdm(enumerate(val_loader)):
         xi = xi.to(device)
@@ -372,7 +379,7 @@ def inference_on_latent_grid(net, samples, z_mu, latent_dim, dummy):
 
     # average over diagonal elements
     sigma_vector = sigma_vector.view(n_points_axis**2, -1).mean(axis=1)
-    
+
     return xg_mesh, yg_mesh, sigma_vector, n_points_axis
 
 
@@ -388,8 +395,12 @@ def test_lae(config, batch_size=1):
     latent_dim = len(encoder.encoder)  # latent dim after encoder
     net = get_model(encoder, decoder).eval().to(device)
     net.load_state_dict(torch.load(f"../weights/{path}/net.pth"))
-    
-    hessian_approx = sampler.BlockSampler() if config["approximation"] == "block" else sampler.DiagSampler()
+
+    hessian_approx = (
+        sampler.BlockSampler()
+        if config["approximation"] == "block"
+        else sampler.DiagSampler()
+    )
 
     h = torch.load(f"../weights/{path}/hessian.pth")
     sigma_q = hessian_approx.invert(h)
@@ -406,9 +417,10 @@ def test_lae(config, batch_size=1):
     x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse = inference_on_dataset(
         net, samples, val_loader, latent_dim
     )
-    
-    nll = (x_rec_mu - np.reshape(x, x_rec_mu.shape))**2 / (2*x_rec_sigma**2) + 1/2 * np.log( x_rec_sigma**2 )
-    save_metric(path, "nll", nll.sum())
+
+    nll = (x_rec_mu - np.reshape(x, x_rec_mu.shape)) ** 2 / (
+        2 * x_rec_sigma**2
+    ) + 1 / 2 * np.log(x_rec_sigma**2)
 
     # evaluate on latent grid representation
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
@@ -424,6 +436,8 @@ def test_lae(config, batch_size=1):
 
     if config["dataset"] == "swissrole":
         labels = None
+
+    save_metric(path, "nll", nll.sum())
 
     plot_latent_space(path, z_mu, labels, xg_mesh, yg_mesh, sigma_vector, n_points_axis)
 
@@ -464,7 +478,6 @@ def test_lae(config, batch_size=1):
         )
 
 
-
 def train_lae(config):
 
     # data
@@ -476,11 +489,14 @@ def train_lae(config):
     model = LitLaplaceAutoEncoder(config, train_loader.dataset.__len__())
 
     # default logger used by trainer
-    name = datetime.now().strftime("%b-%d-%Y-%H:%M:%S")
+    name = f"lae_elbo/{config['dataset']}/{datetime.now().strftime('%b-%d-%Y-%H:%M:%S')}/{config['exp_name']}"
     logger = TensorBoardLogger(save_dir="../lightning_log", name=name)
 
-    # early stopping
-    callbacks = [EarlyStopping(monitor="val_loss", patience=15)]
+    # monitor learning rate & early stopping
+    callbacks = [
+        LearningRateMonitor(logging_interval="step"),
+        EarlyStopping(monitor="val_loss", patience=8),
+    ]
 
     # training
     n_device = torch.cuda.device_count()

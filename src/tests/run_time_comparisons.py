@@ -28,6 +28,7 @@ from typing import Any, Dict, Union
 import argparse
 import json
 
+
 def get_gpu_memory_map() -> Dict[str, float]:
     """
     Get the current gpu usage.
@@ -52,10 +53,11 @@ def get_gpu_memory_map() -> Dict[str, float]:
 
     # Convert lines into a dictionary
     gpu_memory = [float(x) for x in result.stdout.strip().split(os.linesep)]
-    gpu_memory_map = {f"gpu_id: {gpu_id}/memory.used (MB)": memory for gpu_id, memory in enumerate(gpu_memory)}
+    gpu_memory_map = {
+        f"gpu_id: {gpu_id}/memory.used (MB)": memory
+        for gpu_id, memory in enumerate(gpu_memory)
+    }
     return gpu_memory_map, gpu_memory
-
-
 
 
 def get_model(data_size, number_of_layers, device):
@@ -77,6 +79,7 @@ def get_model_stochman(data_size, number_of_layers, device):
 
     return model
 
+
 def get_data(data_size):
     num_observations = 1000
 
@@ -86,6 +89,7 @@ def get_data(data_size):
     dataloader = DataLoader(dataset, batch_size=32)
 
     return dataloader
+
 
 def run_la(data_size, number_of_layers):
 
@@ -113,7 +117,7 @@ def run_row(data_size, number_of_layers):
 
     torch.manual_seed(42)
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    
+
     dataloader = get_data(data_size)
     model = get_model_stochman(data_size, number_of_layers, device)
 
@@ -128,10 +132,10 @@ def run_row(data_size, number_of_layers):
 
 
 def run_layer(data_size, number_of_layers):
-    
+
     torch.manual_seed(42)
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    
+
     dataloader = get_data(data_size)
     model = get_model_stochman(data_size, number_of_layers, device)
 
@@ -152,19 +156,23 @@ def run(data_size, number_of_layers):
     logging.info(f"{elapsed_row=}")
     logging.info(f"{elapsed_layer=}")
 
-    torch.testing.assert_close(laH, Hs_row, rtol=1e-3, atol=0.)  # Less than 0.01% off
-    torch.testing.assert_close(laH, Hs_layer, rtol=1e-3, atol=0.)  # Less than 0.01% off
-    torch.testing.assert_close(Hs_row, Hs_layer, rtol=1e-3, atol=0.)  # Less than 0.01% off
+    torch.testing.assert_close(laH, Hs_row, rtol=1e-3, atol=0.0)  # Less than 0.01% off
+    torch.testing.assert_close(
+        laH, Hs_layer, rtol=1e-3, atol=0.0
+    )  # Less than 0.01% off
+    torch.testing.assert_close(
+        Hs_row, Hs_layer, rtol=1e-3, atol=0.0
+    )  # Less than 0.01% off
 
     return elapsed_la, elapsed_layer
 
 
 if __name__ == "__main__":
-    
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_size", type = int, default=1)
-    parser.add_argument("--number_of_layers", type = int, default=1)
-    parser.add_argument("--backend", type = str, default="layer")
+    parser.add_argument("--data_size", type=int, default=1)
+    parser.add_argument("--number_of_layers", type=int, default=1)
+    parser.add_argument("--backend", type=str, default="layer")
     args = parser.parse_args()
 
     _, gpu_memory_before = get_gpu_memory_map()
@@ -183,14 +191,16 @@ if __name__ == "__main__":
 
     _, gpu_memory_after = get_gpu_memory_map()
 
-    dict = {"data_size" : args.data_size,
-            "number_of_layers" : args.number_of_layers,
-            "run_time" : t,
-            "backend" : args.backend,
-            "memory" : gpu_memory_after[0] - gpu_memory_before[0]}
+    dict = {
+        "data_size": args.data_size,
+        "number_of_layers": args.number_of_layers,
+        "run_time": t,
+        "backend": args.backend,
+        "memory": gpu_memory_after[0] - gpu_memory_before[0],
+    }
 
     name = f"{args.backend}_{args.data_size}_{args.number_of_layers}"
     path = "../../figures/run_time/no_conv"
     os.makedirs(path, exist_ok=True)
-    with open(f"{path}/{name}.json", 'w') as fp:
+    with open(f"{path}/{name}.json", "w") as fp:
         json.dump(dict, fp)

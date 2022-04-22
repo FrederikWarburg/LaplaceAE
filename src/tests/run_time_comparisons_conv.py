@@ -25,7 +25,6 @@ import json
 from run_time_comparisons import get_gpu_memory_map
 
 
-
 def get_model(channels, number_of_layers, device):
 
     model = [nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False)]
@@ -55,12 +54,13 @@ def get_model_stochman(channels, number_of_layers, device):
 def get_data(channels, data_size):
 
     num_observations = 1000
-    
+
     X = torch.rand((num_observations, channels, data_size, data_size)).float()
     dataset = TensorDataset(X, X.view(num_observations, -1))
     dataloader = DataLoader(dataset, batch_size=32)
 
     return dataloader
+
 
 def run_la(data_size, number_of_layers):
     channels = 10
@@ -122,7 +122,7 @@ def run_layer(data_size, number_of_layers, diag_tmp):
         Hs_layer = [l.cpu() for l in Hs_layer]
     else:
         Hs_layer.cpu()
-        
+
     return Hs_layer, elapsed_layer
 
 
@@ -165,9 +165,9 @@ if __name__ == "__main__":
     logging.getLogger().setLevel(logging.INFO)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_size", type = int, default=1)
-    parser.add_argument("--number_of_layers", type = int, default=1)
-    parser.add_argument("--backend", type = str, default="layer")
+    parser.add_argument("--data_size", type=int, default=1)
+    parser.add_argument("--number_of_layers", type=int, default=1)
+    parser.add_argument("--backend", type=str, default="layer")
     args = parser.parse_args()
 
     _, gpu_memory_before = get_gpu_memory_map()
@@ -195,14 +195,16 @@ if __name__ == "__main__":
 
     _, gpu_memory_after = get_gpu_memory_map()
 
-    dict = {"data_size" : args.data_size,
-            "number_of_layers" : args.number_of_layers,
-            "run_time" : t,
-            "backend" : args.backend,
-            "memory" : gpu_memory_after[0] - gpu_memory_before[0]}
+    dict = {
+        "data_size": args.data_size,
+        "number_of_layers": args.number_of_layers,
+        "run_time": t,
+        "backend": args.backend,
+        "memory": gpu_memory_after[0] - gpu_memory_before[0],
+    }
 
     name = f"{args.backend}_{args.data_size}_{args.number_of_layers}"
     path = "../../figures/run_time/conv"
     os.makedirs(path, exist_ok=True)
-    with open(f"{path}/{name}.json", 'w') as fp:
+    with open(f"{path}/{name}.json", "w") as fp:
         json.dump(dict, fp)

@@ -26,11 +26,11 @@ class DiagSampler(Sampler):
     def kl_div(self, mu_q, sigma_q):
         k = len(mu_q)
         return 0.5 * (
-                    torch.log(1.0 / sigma_q)
-                    - k
-                    + torch.matmul(mu_q.T, mu_q)
-                    + torch.sum(sigma_q)
-                )
+            torch.log(1.0 / sigma_q)
+            - k
+            + torch.matmul(mu_q.T, mu_q)
+            + torch.sum(sigma_q)
+        )
 
     def init_hessian(self, data_size, net, device):
 
@@ -47,7 +47,6 @@ class DiagSampler(Sampler):
         return constant * hessian + 1
 
 
-
 class BlockSampler(Sampler):
     def sample(self, parameters, posterior_scale, n_samples=100):
         n_samples = torch.tensor([n_samples])
@@ -55,9 +54,11 @@ class BlockSampler(Sampler):
         param_samples = []
         for post_scale_layer in posterior_scale:
             n_param_layer = len(post_scale_layer)
-            
-            layer_param = parameters[count: count + n_param_layer]
-            normal = torch.distributions.multivariate_normal.MultivariateNormal(layer_param, covariance_matrix = post_scale_layer)
+
+            layer_param = parameters[count : count + n_param_layer]
+            normal = torch.distributions.multivariate_normal.MultivariateNormal(
+                layer_param, covariance_matrix=post_scale_layer
+            )
             samples = normal.sample(n_samples)
             param_samples.append(samples)
 
@@ -71,28 +72,30 @@ class BlockSampler(Sampler):
         return posterior_scale
 
     def kl_div(self, mu_q, sigma_q):
-        
+
         k = len(mu_q)
-        
-        #TODO: fix later.
+
+        # TODO: fix later.
         sigma_q = torch.cat([torch.diagonal(s) for s in sigma_q])
-    
+
         return 0.5 * (
-                    torch.log(1.0 / sigma_q)
-                    - k
-                    + torch.matmul(mu_q.T, mu_q)
-                    + torch.sum(sigma_q)
-                )
+            torch.log(1.0 / sigma_q)
+            - k
+            + torch.matmul(mu_q.T, mu_q)
+            + torch.sum(sigma_q)
+        )
 
     def init_hessian(self, data_size, net, device):
 
         hessian = []
-        for layer in net: 
+        for layer in net:
             # if parametric layer
             if isinstance(layer, torch.nn.Conv2d) or isinstance(layer, torch.nn.Linear):
                 params = parameters_to_vector(layer.parameters())
                 n_params = len(params)
-                hessian.append(data_size * torch.ones(n_params, n_params, device=device))
+                hessian.append(
+                    data_size * torch.ones(n_params, n_params, device=device)
+                )
 
         return hessian
 
@@ -112,7 +115,9 @@ class BlockSampler(Sampler):
                     tmp += hessian[s][i]
 
             tmp = tmp / n_samples
-            tmp = constant * tmp + torch.diag_embed(torch.ones(len(tmp), device=tmp.device))
+            tmp = constant * tmp + torch.diag_embed(
+                torch.ones(len(tmp), device=tmp.device)
+            )
             hessian_mean.append(tmp)
 
         return hessian_mean

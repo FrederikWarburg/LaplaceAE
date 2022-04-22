@@ -3,7 +3,7 @@
 exp_name : "eval_approx_strategies/"
 
 # training
-train : False
+train : True
 kl_weight: 1e-6
 train_samples: 10
 
@@ -15,7 +15,7 @@ test_samples: 100
 # data
 dataset : "mnist"
 ood_dataset : "kmnist"
-batch_size: 12
+batch_size: 100
     
 # model
 pretrained : False

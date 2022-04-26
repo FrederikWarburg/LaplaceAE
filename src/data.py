@@ -1,3 +1,4 @@
+from builtins import breakpoint
 import torch
 import numpy as np
 from torch.utils.data import DataLoader, TensorDataset, random_split
@@ -27,12 +28,27 @@ def mask_regions(dataset):
     return dataset
 
 
+def mask_half(dataset):
+    breakpoint()
+
+    if dataset.data.ndim == 4:
+        n, c, h, w = dataset.data.shape
+    else:
+        n, h, w = dataset.data.shape
+
+    idx = np.random.randint()
+
+
 def get_data(name, batch_size=32, missing_data_imputation=False):
 
     if name == "mnist":
         dataset = MNIST(
             "../data/", train=True, download=True, transform=transforms.ToTensor()
         )
+
+        if missing_data_imputation:
+            dataset = mask_half(dataset)
+
         train, val = random_split(
             dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
         )

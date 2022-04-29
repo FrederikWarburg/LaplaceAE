@@ -165,6 +165,33 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             # compute mse for sample net
             mse_running_sum += F.mse_loss(x_rec.view(*x.shape), x)
 
+
+            if not self.config["one_hessian_per_sampling"]:
+                # compute hessian for sample net
+                start = time.time()
+
+                # H = J^T J
+                h_s = self.HessianCalculator.__call__(self.net, self.feature_maps, x)
+                h_s = self.sampler.scale(h_s, b, self.dataset_size)
+
+                self.timings["compute_hessian"] += time.time() - start
+
+                # append results
+                hessian.append(h_s)
+            x_recs.append(x_rec)
+
+        if self.config["one_hessian_per_sampling"]:
+            stupid_sigma = torch.zeros_like(sigma_q)
+            stupid_samples = self.sampler.sample(
+                mu_q, stupid_sigma, n_samples=1
+            )
+            net_sample = stupid_samples[0]
+            # replace the network parameters with the sampled parameters
+            vector_to_parameters(net_sample, self.net.parameters())
+            # reset or init
+            self.feature_maps = []
+            # predict with the sampled weights
+            x_rec = self.net(x)
             # compute hessian for sample net
             start = time.time()
 
@@ -176,10 +203,11 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
             # append results
             hessian.append(h_s)
-            x_recs.append(x_rec)
+
 
         # note that + 1 is the identity which is the hessian of the KL term
-        self.hessian = self.sampler.aveage_hessian_samples(hessian, self.constant)
+        new_hessian = self.sampler.aveage_hessian_samples(hessian, self.constant)
+        self.hessian = new_hessian + self.config["hessian_memory_factor"]*(self.hessian - new_hessian)
         mse = mse_running_sum / self.config["train_samples"]
         loss = self.constant * mse + self.kl_weight * kl.mean()
 
@@ -198,6 +226,10 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         )
         self.log("time/compute_hessian", self.timings["compute_hessian"])
         self.log("time/forward_nn", self.timings["forward_nn"])
+
+        print(self.hessian[:5])
+        print('TIMES: forward', round(self.timings["forward_nn"],4), 'hessian', round(self.timings["compute_hessian"],4))
+
         self.timings["forward_nn"] = 0
         self.timings["compute_hessian"] = 0
 

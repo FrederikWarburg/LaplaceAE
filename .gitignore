@@ -2,4 +2,8 @@
 __pycache__/
 
 # folder specific
-data
+data/
+lightning_logs/
+weights/
+
+*.png

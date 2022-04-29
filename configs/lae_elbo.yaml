@@ -23,5 +23,7 @@ no_conv : False
 latent_size : 2
 
 # hessian
-backend : "layer" # choose layer, row, backpack
-diag : False
+backend : "layer" 
+approximation : "approx"
+hessian_memory_factor : 0.9
+one_hessian_per_sampling : False

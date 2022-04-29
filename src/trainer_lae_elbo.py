@@ -523,8 +523,8 @@ def train_lae(config):
     model = LitLaplaceAutoEncoder(config, train_loader.dataset.__len__())
 
     # default logger used by trainer
-    name = f"lae_elbo/{config['dataset']}/{datetime.now().strftime('%b-%d-%Y-%H:%M:%S')}/{config['exp_name']}"
-    logger = TensorBoardLogger(save_dir="../lightning_log", name=name)
+    #name = f"lae_elbo/{config['dataset']}/{datetime.now().strftime('%b-%d-%Y-%H:%M:%S')}/{config['exp_name']}"
+    logger = TensorBoardLogger(save_dir="..\lightning_log")#, name=name)
 
     # monitor learning rate & early stopping
     callbacks = [
@@ -569,4 +569,4 @@ if __name__ == "__main__":
     if config["train"]:
         train_lae(config)
 
-    test_lae(config)
+    #test_lae(config)

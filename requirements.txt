@@ -1,0 +1,8 @@
+torch>=1.8
+pytorch-lightning
+tqdm
+dill
+pandas
+seaborn
+umap
+setuptools==59.5.0

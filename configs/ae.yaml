@@ -1,6 +1,8 @@
 
 # training
 train : True
+# train:
+train: True
 
 # test
 ood : False
@@ -12,5 +14,5 @@ batch_size: 128
     
 # model
 use_var_decoder : False
-no_conv : False
-latent_size : 100
+no_conv : True
+latent_size : 2

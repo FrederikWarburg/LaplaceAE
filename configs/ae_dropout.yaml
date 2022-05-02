@@ -1,6 +1,6 @@
 
 # training
-train : False
+train : True
 
 # test
 test_samples: 100
@@ -12,3 +12,6 @@ batch_size: 128
     
 # model
 dropout_rate: 0.2
+use_var_decoder : False
+no_conv : True
+latent_size : 2

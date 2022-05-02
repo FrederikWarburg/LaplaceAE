@@ -1,10 +1,9 @@
 
 # training
-train : True
+train : False
 kl_weight: 0.0001
 
 # test
-ood : False
 
 # data
 dataset : "mnist"
@@ -12,6 +11,4 @@ ood_dataset : "kmnist"
 batch_size: 128
     
 # model
-use_var_decoder : False
-no_conv : True
-latent_size : 2
+use_var_decoder : True

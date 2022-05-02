@@ -1,12 +1,12 @@
-from src.models.mnist import Encoder_conv, Encoder_mnist, Decoder_conv, Decoder_mnist
-from src.models.mnist_stochman import (
+from models.mnist import Encoder_conv, Encoder_mnist, Decoder_conv, Decoder_mnist
+from models.mnist_stochman import (
     Encoder_stochman_conv,
     Encoder_stochman_mnist,
     Decoder_stochman_conv,
     Decoder_stochman_mnist,
 )
-from src.models.svhn_stochman import Encoder_stochman_svhn_conv, Decoder_stochman_svhn_conv
-from src.models.svhn import Encoder_svhn_conv, Decoder_svhn_conv
+from models.svhn_stochman import Encoder_stochman_svhn_conv, Decoder_stochman_svhn_conv
+from models.svhn import Encoder_svhn_conv, Decoder_svhn_conv
 
 encoders = {
     "mnist": Encoder_mnist,

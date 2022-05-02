@@ -19,7 +19,7 @@ batch_size: 24
     
 # model
 pretrained : False
-no_conv : True
+no_conv : False
 latent_size : 2
 
 # hessian

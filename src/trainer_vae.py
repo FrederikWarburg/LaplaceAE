@@ -317,6 +317,9 @@ def train_vae(config):
     if config["use_var_decoder"]:
         torch.save(model.var_decoder.state_dict(), f"../weights/{path}/var_decoder.pth")
 
+    with open(f"../weights/{path}/config.yaml", "w") as outfile:
+        yaml.dump(config, outfile, default_flow_style=False)
+
 
 if __name__ == "__main__":
 

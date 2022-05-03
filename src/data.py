@@ -52,8 +52,12 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         train, val = random_split(
             dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
         )
-        train_loader = DataLoader(train, batch_size=batch_size, pin_memory=True)
-        val_loader = DataLoader(val, batch_size=batch_size, pin_memory=True)
+        train_loader = DataLoader(
+            train, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
+        val_loader = DataLoader(
+            val, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
 
     elif name == "kmnist":
         dataset = KMNIST(
@@ -62,8 +66,12 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         train, val = random_split(
             dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
         )
-        train_loader = DataLoader(train, batch_size=batch_size, pin_memory=True)
-        val_loader = DataLoader(val, batch_size=batch_size, pin_memory=True)
+        train_loader = DataLoader(
+            train, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
+        val_loader = DataLoader(
+            val, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
 
     elif name == "fashionmnist":
 
@@ -73,8 +81,12 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         train, val = random_split(
             dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
         )
-        train_loader = DataLoader(train, batch_size=batch_size, pin_memory=True)
-        val_loader = DataLoader(val, batch_size=batch_size, pin_memory=True)
+        train_loader = DataLoader(
+            train, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
+        val_loader = DataLoader(
+            val, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
 
     elif name == "svhn":
 
@@ -96,8 +108,12 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         train, val = random_split(
             dataset, [73257 - 5000, 5000], generator=torch.Generator().manual_seed(42)
         )
-        train_loader = DataLoader(train, batch_size=batch_size, pin_memory=True)
-        val_loader = DataLoader(val, batch_size=batch_size, pin_memory=True)
+        train_loader = DataLoader(
+            train, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
+        val_loader = DataLoader(
+            val, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
 
     elif name == "swissrole":
         N_train = 50000
@@ -116,10 +132,16 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         X_val, y_test = swiss_roll_2d(n_samples=N_val)
 
         train_loader = DataLoader(
-            TensorDataset(X_train, y_train), batch_size=batch_size, pin_memory=True
+            TensorDataset(X_train, y_train),
+            batch_size=batch_size,
+            num_workers=8,
+            pin_memory=True,
         )
         val_loader = DataLoader(
-            TensorDataset(X_val, y_test), batch_size=batch_size, pin_memory=True
+            TensorDataset(X_val, y_test),
+            batch_size=batch_size,
+            num_workers=8,
+            pin_memory=True,
         )
 
     elif name == "celeba":
@@ -129,8 +151,12 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         dataset_train, dataset_val = random_split(
             dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
         )
-        train_loader = DataLoader(dataset_train, batch_size=batch_size, pin_memory=True)
-        val_loader = DataLoader(dataset_val, batch_size=batch_size, pin_memory=True)
+        train_loader = DataLoader(
+            dataset_train, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
+        val_loader = DataLoader(
+            dataset_val, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
 
     elif name == "cifar10":
         # image resolution 32 x 32
@@ -140,8 +166,12 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         dataset_train, dataset_val = random_split(
             dataset, [45000, 5000], generator=torch.Generator().manual_seed(42)
         )
-        train_loader = DataLoader(dataset_train, batch_size=batch_size, pin_memory=True)
-        val_loader = DataLoader(dataset_val, batch_size=batch_size, pin_memory=True)
+        train_loader = DataLoader(
+            dataset_train, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
+        val_loader = DataLoader(
+            dataset_val, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
 
     else:
         raise NotImplemplenetError

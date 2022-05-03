@@ -113,9 +113,65 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
         self.save_hyperparameters(config)
 
-    def forward(self, x):
-        out = self.net(x)
-        return out
+    def forward(self, x, mu_q, sigma_q, n_samples, train=True):
+
+        mse_running_sum = 0
+        hessian = []
+        x_recs = []
+
+        # draw samples from the nn (sample nn)
+        samples = self.sampler.sample(mu_q, sigma_q, n_samples)
+        for net_sample in samples:
+
+            # replace the network parameters with the sampled parameters
+            vector_to_parameters(net_sample, self.net.parameters())
+
+            # reset or init
+            self.feature_maps = []
+
+            # predict with the sampled weights
+            start = time.time()
+            x_rec = self.net(x)
+
+            self.timings["forward_nn"] += time.time() - start
+
+            # compute mse for sample net
+            mse_running_sum += F.mse_loss(x_rec.view(*x.shape), x)
+
+            if (not self.config["one_hessian_per_sampling"]) and train:
+                # compute hessian for sample net
+                start = time.time()
+
+                # H = J^T J
+                h_s = self.HessianCalculator.__call__(self.net, self.feature_maps, x)
+                h_s = self.sampler.scale(h_s, x.shape[0], self.dataset_size)
+
+                self.timings["compute_hessian"] += time.time() - start
+
+                # append results
+                hessian.append(h_s)
+            x_recs.append(x_rec)
+
+        # reset the network parameters with the mean parameter (MAP estimate parameters)
+        vector_to_parameters(mu_q, self.net.parameters())
+        mse = mse_running_sum / self.config["train_samples"]
+
+        if self.config["one_hessian_per_sampling"] and train:
+
+            # reset or init
+            self.feature_maps = []
+            # predict with the sampled weights
+            x_rec = self.net(x)
+            # compute hessian for sample net
+            start = time.time()
+
+            # H = J^T J
+            h_s = self.HessianCalculator.__call__(self.net, self.feature_maps, x)
+            hessian = [self.sampler.scale(h_s, x.shape[0], self.dataset_size)]
+
+            self.timings["compute_hessian"] += time.time() - start
+
+        return x_recs, hessian, mse
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
@@ -136,83 +192,21 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
         # compute kl
         sigma_q = self.sampler.invert(self.hessian)
-        mu_q = parameters_to_vector(self.net.parameters())
+        mu_q = parameters_to_vector(self.net.parameters()).unsqueeze(1)
 
         kl = self.sampler.kl_div(mu_q, sigma_q)
 
-        mse_running_sum = 0
-        hessian = []
-        x_recs = []
-
-        # draw samples from the nn (sample nn)
-        samples = self.sampler.sample(
-            mu_q, sigma_q, n_samples=self.config["train_samples"]
+        x_recs, hessian, mse = self.forward(
+            x, mu_q, sigma_q, self.config["train_samples"]
         )
-        for net_sample in samples:
-
-            # replace the network parameters with the sampled parameters
-            vector_to_parameters(net_sample, self.net.parameters())
-
-            # reset or init
-            self.feature_maps = []
-
-            # predict with the sampled weights
-            start = time.time()
-            x_rec = self.net(x)
-
-            self.timings["forward_nn"] += time.time() - start
-
-            # compute mse for sample net
-            mse_running_sum += F.mse_loss(x_rec.view(*x.shape), x)
-
-
-            if not self.config["one_hessian_per_sampling"]:
-                # compute hessian for sample net
-                start = time.time()
-
-                # H = J^T J
-                h_s = self.HessianCalculator.__call__(self.net, self.feature_maps, x)
-                h_s = self.sampler.scale(h_s, b, self.dataset_size)
-
-                self.timings["compute_hessian"] += time.time() - start
-
-                # append results
-                hessian.append(h_s)
-            x_recs.append(x_rec)
-
-        if self.config["one_hessian_per_sampling"]:
-            stupid_sigma = torch.zeros_like(sigma_q)
-            stupid_samples = self.sampler.sample(
-                mu_q, stupid_sigma, n_samples=1
-            )
-            net_sample = stupid_samples[0]
-            # replace the network parameters with the sampled parameters
-            vector_to_parameters(net_sample, self.net.parameters())
-            # reset or init
-            self.feature_maps = []
-            # predict with the sampled weights
-            x_rec = self.net(x)
-            # compute hessian for sample net
-            start = time.time()
-
-            # H = J^T J
-            h_s = self.HessianCalculator.__call__(self.net, self.feature_maps, x)
-            h_s = self.sampler.scale(h_s, b, self.dataset_size)
-
-            self.timings["compute_hessian"] += time.time() - start
-
-            # append results
-            hessian.append(h_s)
-
 
         # note that + 1 is the identity which is the hessian of the KL term
-        new_hessian = self.sampler.aveage_hessian_samples(hessian, self.constant)
-        self.hessian = new_hessian + self.config["hessian_memory_factor"]*(self.hessian - new_hessian)
-        mse = mse_running_sum / self.config["train_samples"]
-        loss = self.constant * mse + self.kl_weight * kl.mean()
+        hessian = self.sampler.aveage_hessian_samples(hessian, self.constant)
+        self.hessian = (
+            1 - self.config["hessian_memory_factor"]
+        ) * hessian + self.config["hessian_memory_factor"] * self.hessian
 
-        # reset the network parameters with the mean parameter (MAP estimate parameters)
-        vector_to_parameters(mu_q, self.net.parameters())
+        loss = self.constant * mse + self.kl_weight * kl.mean()
 
         # log losses
         self.log("train_loss", loss)
@@ -226,9 +220,6 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         )
         self.log("time/compute_hessian", self.timings["compute_hessian"])
         self.log("time/forward_nn", self.timings["forward_nn"])
-
-        print(self.hessian[:5])
-        print('TIMES: forward', round(self.timings["forward_nn"],4), 'hessian', round(self.timings["compute_hessian"],4))
 
         self.timings["forward_nn"] = 0
         self.timings["compute_hessian"] = 0
@@ -249,7 +240,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         if self.current_epoch > self.last_epoch_logged:
 
             x = x.view(b, c, h, w)
-            x_rec = x_rec.view(b, c, h, w)
+            x_rec = x_recs[0].view(b, c, h, w)
 
             img_grid = torch.clamp(torchvision.utils.make_grid(x[:4]), 0, 1)
             self.logger.experiment.add_image(
@@ -283,17 +274,19 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         x, y = val_batch
         b, c, h, w = x.shape
 
-        if self.no_conv:
-            x = x.view(x.size(0), -1)
+        # compute kl
+        sigma_q = self.sampler.invert(self.hessian)
+        mu_q = parameters_to_vector(self.net.parameters()).unsqueeze(1)
 
-        x_rec = self.net(x)
-        loss = F.mse_loss(x_rec, x)
+        x_recs, _, mse = self.forward(
+            x, mu_q, sigma_q, self.config["test_samples"], train=False
+        )
 
-        self.log("val_loss", loss)
+        self.log("val_loss", mse)
 
         if self.current_epoch > self.last_epoch_logged_val:
             x = x.view(b, c, h, w)
-            x_rec = x_rec.view(b, c, h, w)
+            x_rec = x_recs[0].view(b, c, h, w)
 
             img_grid = torch.clamp(torchvision.utils.make_grid(x[:4]), 0, 1)
             self.logger.experiment.add_image(
@@ -303,6 +296,22 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             self.logger.experiment.add_image(
                 "val/recons_images", img_grid, self.current_epoch
             )
+
+            mean = torch.stack(x_recs).mean(dim=0)
+            mean = mean.view(b, c, h, w)
+
+            img_grid = torch.clamp(torchvision.utils.make_grid(mean[:4]), 0, 1)
+            self.logger.experiment.add_image(
+                "val/mean_recons_images", img_grid, self.current_epoch
+            )
+            sigma = torch.stack(x_recs).var(dim=0).sqrt()
+            sigma = sigma.view(b, c, h, w)
+
+            img_grid = torch.clamp(torchvision.utils.make_grid(sigma[:4]), 0, 1)
+            self.logger.experiment.add_image(
+                "val/var_recons_images", img_grid, self.current_epoch
+            )
+
             self.logger.experiment.flush()
             self.last_epoch_logged_val += 1
 
@@ -440,7 +449,7 @@ def test_lae(config, batch_size=1):
     sigma_q = hessian_approx.invert(h)
 
     # draw samples from the nn (sample nn)
-    mu_q = parameters_to_vector(net.parameters())
+    mu_q = parameters_to_vector(net.parameters()).unsqueeze(1)
     samples = hessian_approx.sample(mu_q, sigma_q, n_samples=config["test_samples"])
 
     _, val_loader = get_data(

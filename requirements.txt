@@ -4,5 +4,7 @@ tqdm
 dill
 pandas
 seaborn
-umap
+umap-learn
 setuptools==59.5.0
+backpack-for-pytorch
+biopython

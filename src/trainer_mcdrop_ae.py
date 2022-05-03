@@ -275,6 +275,9 @@ def train_mcdropout_ae(config):
     torch.save(model.encoder.state_dict(), f"{path}/encoder.pth")
     torch.save(model.decoder.state_dict(), f"{path}/decoder.pth")
 
+    with open(f"{path}/config.yaml", "w") as outfile:
+        yaml.dump(config, outfile, default_flow_style=False)
+
 
 if __name__ == "__main__":
 

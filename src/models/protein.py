@@ -13,11 +13,11 @@ class Encoder_protein(torch.nn.Module):
 
         self.encoder = nn.Sequential(
             nn.Linear(SEQ_LEN*TOKEN_SIZE, 750),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(500, 250),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(250, latent_size),
-            nn.ReLU()
+            nn.Tanh()
         )
 
     def forward(self, x):
@@ -32,11 +32,11 @@ class Decoder_protein(torch.nn.Module):
 
         self.decoder = nn.Sequential(
             nn.Linear(latent_size, 250),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(250, 500),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(500, 750)
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(750, SEQ_LEN*TOKEN_SIZE)
         )
 

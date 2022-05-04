@@ -24,6 +24,7 @@ class LitAutoEncoder(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
 
+        self.loss_fn = config["loss_fn"]
         self.use_var_decoder = config["use_var_decoder"]
         self.no_conv = config["no_conv"]
         self.latent_size = config["latent_size"]
@@ -38,7 +39,7 @@ class LitAutoEncoder(pl.LightningModule):
         return embedding
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
         return optimizer
 
     def training_step(self, train_batch, batch_idx):
@@ -58,7 +59,7 @@ class LitAutoEncoder(pl.LightningModule):
                 + log_sigma_x_hat
             ).mean()
         else:
-            loss = F.mse_loss(mu_x_hat, x)
+            loss = F.mse_loss(mu_x_hat, x) if self.loss_fn == 'mse' else F.cross_entropy(mu_x_hat, x.long())
 
         self.log("train_loss", loss)
         return loss
@@ -81,7 +82,7 @@ class LitAutoEncoder(pl.LightningModule):
                 + log_sigma_x_hat
             ).mean()
         else:
-            loss = F.mse_loss(mu_x_hat, x)
+            loss = F.mse_loss(mu_x_hat, x) if self.loss_fn == 'mse' else F.cross_entropy(mu_x_hat, x.long())
 
         self.log("val_loss", loss)
 

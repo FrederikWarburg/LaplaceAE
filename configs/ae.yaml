@@ -1,4 +1,3 @@
-
 # training
 train : True
 
@@ -6,11 +5,12 @@ train : True
 ood : False
 
 # data
-dataset : "mnist"
+dataset : "protein"
 ood_dataset : "kmnist"
 batch_size: 128
     
 # model
 use_var_decoder : False
-no_conv : False
+no_conv : True
 latent_size : 2
+loss_fn: "categorical"

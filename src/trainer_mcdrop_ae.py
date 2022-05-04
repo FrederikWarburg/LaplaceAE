@@ -31,6 +31,7 @@ class LitDropoutAutoEncoder(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
 
+        self.loss_fn = config['loss_fn']
         latent_size = 2
         self.encoder = get_encoder(config, latent_size, dropout=config["dropout_rate"])
         self.decoder = get_decoder(config, latent_size, dropout=config["dropout_rate"])
@@ -48,7 +49,7 @@ class LitDropoutAutoEncoder(pl.LightningModule):
         x = x.view(x.size(0), -1)
         z = self.encoder(x)
         x_hat = self.decoder(z)
-        loss = F.mse_loss(x_hat, x)
+        loss = F.mse_loss(x_hat, x) if self.loss_fn == 'mse' else F.cross_entropy(x_hat, x)
         self.log("train_loss", loss)
         return loss
 

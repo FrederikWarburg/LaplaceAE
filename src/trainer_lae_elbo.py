@@ -67,6 +67,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         latent_size = config["latent_size"]
         self.kl_weight = float(config["kl_weight"])
         self.no_conv = config["no_conv"]
+        self.loss_fn = config["loss_fn"]
         self.config = config
 
         self.dataset_size = dataset_size
@@ -163,7 +164,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             self.timings["forward_nn"] += time.time() - start
 
             # compute mse for sample net
-            mse_running_sum += F.mse_loss(x_rec.view(*x.shape), x)
+            mse_running_sum += F.mse_loss(x_rec.view(*x.shape), x) if self.loss_fn == "mse" else F.cross_entropy(x_rec.view(*x.shape), x)
 
 
             if not self.config["one_hessian_per_sampling"]:

@@ -29,6 +29,7 @@ class LitVariationalAutoEncoder(pl.LightningModule):
         super().__init__()
 
         # scaling of kl term
+        self.loss_fn = config['loss_fn']
         self.alpha = config["kl_weight"]
         self.use_var_decoder = config["use_var_decoder"]
 
@@ -69,7 +70,7 @@ class LitVariationalAutoEncoder(pl.LightningModule):
                 + log_sigma_x_hat
             ).mean()
         else:
-            rec = F.mse_loss(mu_x_hat, x)
+            rec = F.mse_loss(mu_x_hat, x) if self.loss_fn == 'mse' else F.cross_entropy(mu_x_hat, x.long())
 
         # kl term
         kl = -0.5 * torch.sum(1 + torch.log(z_sigma**2) - z_mu**2 - z_sigma**2)
@@ -101,7 +102,7 @@ class LitVariationalAutoEncoder(pl.LightningModule):
 
         else:
             # reconstruction term
-            rec = F.mse_loss(mu_x_hat, x)
+            rec = F.mse_loss(mu_x_hat, x) if self.loss_fn == 'mse' else F.cross_entropy(mu_x_hat, x.long())
 
         # kl term
         kl = -0.5 * torch.sum(1 + torch.log(z_sigma**2) - z_mu**2 - z_sigma**2)

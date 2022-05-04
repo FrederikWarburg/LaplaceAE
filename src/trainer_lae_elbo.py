@@ -174,7 +174,12 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         return x_recs, hessian, mse
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        lr = (
+            float(self.config["learning_rate"])
+            if "learning_rate" in self.config
+            else 1e-3
+        )
+        optimizer = torch.optim.Adam(self.parameters(), lr=lr)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, factor=0.5, patience=5
         )

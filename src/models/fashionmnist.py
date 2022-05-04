@@ -17,7 +17,10 @@ class Encoder_fashionmnist(torch.nn.Module):
             nn.Linear(512, 256),
             nn.Dropout(p=dropout),
             nn.Tanh(),
-            nn.Linear(256, latent_size),
+            nn.Linear(256, 128),
+            nn.Dropout(p=dropout),
+            nn.Tanh(),
+            nn.Linear(128, latent_size),
         )
 
     def forward(self, x):
@@ -32,7 +35,10 @@ class Decoder_fashionmnist(torch.nn.Module):
 
         # for mc dropout we need to include dropout in our model
         self.decoder = nn.Sequential(
-            nn.Linear(latent_size, 256),
+            nn.Linear(latent_size, 128),
+            nn.Tanh(),
+            nn.Dropout(p=dropout),
+            nn.Linear(128, 256),
             nn.Dropout(p=dropout),
             nn.Tanh(),
             nn.Linear(256, 512),

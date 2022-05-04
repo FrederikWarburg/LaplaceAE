@@ -21,11 +21,11 @@ class Encoder_cifar10_stochman_conv(torch.nn.Module):
             nn.MaxPool2d(2),
             nn.Tanh(),
             nn.Flatten(),
-            nn.Linear(4 * 4 * 48, 512),
-            nn.Tanh(),
-            nn.Linear(512, 256),
-            nn.Tanh(),
-            nn.Linear(256, latent_size),
+            nn.Linear(4 * 4 * 48, latent_size),
+            # nn.Tanh(),
+            # nn.Linear(512, 256),
+            # nn.Tanh(),
+            # nn.Linear(256, latent_size),
         )
 
     def forward(self, x):
@@ -38,11 +38,11 @@ class Decoder_cifar10_stochman_conv(torch.nn.Module):
         self.latent_size = latent_size
 
         self.decoder = nn.Sequential(
-            nn.Linear(latent_size, 256),
+            # n.Linear(latent_size, 256),
+            # nn.Tanh(),
+            # nn.Linear(256, 512),
             nn.Tanh(),
-            nn.Linear(256, 512),
-            nn.Tanh(),
-            nn.Linear(512, 4 * 4 * 48),
+            nn.Linear(latent_size, 4 * 4 * 48),
             nn.Reshape(48, 4, 4),
             nn.Upsample(scale_factor=2, mode="nearest"),
             nn.Tanh(),

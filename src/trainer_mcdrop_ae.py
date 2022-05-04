@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+from pytorch_lightning.callbacks import LearningRateMonitor
 from data import get_data, generate_latent_grid
 from models import get_encoder, get_decoder
 import yaml
@@ -20,6 +21,10 @@ from visualizer import (
     plot_ood_distributions,
     compute_and_plot_roc_curves,
 )
+from datetime import datetime
+import json
+from utils import create_exp_name
+import torchvision
 
 
 def apply_dropout(m):
@@ -34,42 +39,93 @@ class LitDropoutAutoEncoder(pl.LightningModule):
         latent_size = 2
         self.encoder = get_encoder(config, latent_size, dropout=config["dropout_rate"])
         self.decoder = get_decoder(config, latent_size, dropout=config["dropout_rate"])
+        self.config = config
+
+        self.last_epoch_logged_val = -1
 
     def forward(self, x):
         embedding = self.encoder(x)
         return embedding
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
-        return optimizer
+        lr = (
+            float(self.config["learning_rate"])
+            if "learning_rate" in self.config
+            else 1e-3
+        )
+        optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, factor=0.5, patience=5
+        )
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": scheduler,
+            "monitor": "val_loss",
+        }
 
     def training_step(self, train_batch, batch_idx):
         x, y = train_batch
-        x = x.view(x.size(0), -1)
+
         z = self.encoder(x)
         x_hat = self.decoder(z)
-        loss = F.mse_loss(x_hat, x)
+        loss = F.mse_loss(x_hat.view(*x.shape), x)
         self.log("train_loss", loss)
         return loss
 
     def validation_step(self, val_batch, batch_idx):
         x, y = val_batch
-        x = x.view(x.size(0), -1)
 
         # activate dropout layers
         apply_dropout(self.encoder)
         apply_dropout(self.decoder)
 
-        z = self.encoder(x)
-        x_hat = self.decoder(z)
-        loss = F.mse_loss(x_hat, x)
+        x_hat_running = None
+        x_hat2_running = None
+        for i in range(config["test_samples"]):
+            z = self.encoder(x)
+            x_hat = self.decoder(z)
+
+            if x_hat_running is None:
+                x_hat_running = x_hat
+                x_hat2_running = x_hat**2
+            else:
+                x_hat_running += x_hat
+                x_hat2_running += x_hat**2
+
+        mu = x_hat_running / config["test_samples"]
+        mu2 = x_hat2_running / config["test_samples"]
+
+        loss = F.mse_loss(x_hat.view(*x.shape), x)
         self.log("val_loss", loss)
+
+        if self.current_epoch > self.last_epoch_logged_val:
+
+            img_grid = torch.clamp(torchvision.utils.make_grid(x[:4]), 0, 1)
+            self.logger.experiment.add_image(
+                "val/orig_images", img_grid, self.current_epoch
+            )
+            mu = mu[:4].view(*x[:4].shape)
+            img_grid = torch.clamp(torchvision.utils.make_grid(mu), 0, 1)
+            self.logger.experiment.add_image(
+                "val/mean_recons_images", img_grid, self.current_epoch
+            )
+
+            mu2 = mu2[:4].view(*x[:4].shape)
+            sigma = (mu2 - mu**2).abs().sqrt()
+
+            img_grid = torch.clamp(torchvision.utils.make_grid(sigma), 0, 1)
+            self.logger.experiment.add_image(
+                "val/var_recons_images", img_grid, self.current_epoch
+            )
+
+            self.logger.experiment.flush()
+            self.last_epoch_logged_val += 1
 
 
 def inference_on_dataset(encoder, decoder, val_loader, N, device):
     x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = [], [], [], [], [], []
     for i, (xi, yi) in tqdm(enumerate(val_loader)):
-        xi = xi.view(xi.size(0), -1).to(device)
+        xi = xi.to(device)
         with torch.inference_mode():
 
             # activate dropout layers
@@ -252,10 +308,14 @@ def train_mcdropout_ae(config):
     model = LitDropoutAutoEncoder(config)
 
     # default logger used by trainer
-    logger = TensorBoardLogger(save_dir="../", version=1, name="lightning_logs")
+    name = f"ae_mcdrop/{config['dataset']}/{datetime.now().strftime('%b-%d-%Y-%H:%M:%S')}/{config['exp_name']}"
+    logger = TensorBoardLogger(save_dir="../lightning_log", name=name)
 
-    # early stopping
-    callbacks = [EarlyStopping(monitor="val_loss")]
+    # monitor learning rate & early stopping
+    callbacks = [
+        LearningRateMonitor(logging_interval="step"),
+        EarlyStopping(monitor="val_loss", patience=8),
+    ]
 
     # training
     n_device = torch.cuda.device_count()
@@ -292,6 +352,9 @@ if __name__ == "__main__":
 
     with open(args.config) as file:
         config = yaml.full_load(file)
+
+    print(json.dumps(config, indent=4))
+    config["exp_name"] = create_exp_name(config)
 
     # train or load auto encoder
     if config["train"]:

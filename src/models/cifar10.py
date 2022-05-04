@@ -18,11 +18,11 @@ class Encoder_cifar10_conv(torch.nn.Module):
             nn.MaxPool2d(2),
             nn.Tanh(),
             nn.Flatten(),
-            nn.Linear(4 * 4 * 48, 512),
-            nn.Tanh(),
-            nn.Linear(512, 256),
-            nn.Tanh(),
-            nn.Linear(256, latent_size),
+            nn.Linear(4 * 4 * 48, latent_size),
+            # nn.Tanh(),
+            # nn.Linear(512, 256),
+            # nn.Tanh(),
+            # nn.Linear(256, latent_size),
         )
 
     def forward(self, x):
@@ -35,11 +35,11 @@ class Decoder_cifar10_conv(torch.nn.Module):
         self.latent_size = latent_size
 
         self.decoder = nn.Sequential(
-            nn.Linear(latent_size, 256),
+            # nn.Linear(latent_size, 256),
+            # nn.Tanh(),
+            # nn.Linear(256, 512),
             nn.Tanh(),
-            nn.Linear(256, 512),
-            nn.Tanh(),
-            nn.Linear(512, 4 * 4 * 48),
+            nn.Linear(latent_size, 4 * 4 * 48),
             nn.Unflatten(1, (48, 4, 4)),
             nn.Upsample(scale_factor=2, mode="nearest"),
             nn.Tanh(),
@@ -49,7 +49,7 @@ class Decoder_cifar10_conv(torch.nn.Module):
             nn.Conv2d(24, 12, 3, stride=1, padding=1, bias=None),
             nn.Upsample(scale_factor=2, mode="nearest"),
             nn.Tanh(),
-            nn.Conv2d(12, out_channels, 3, stride=1, padding=1, bias=None),
+            nn.Conv2d(12, 3, 3, stride=1, padding=1, bias=None),
         )
 
     def forward(self, x):

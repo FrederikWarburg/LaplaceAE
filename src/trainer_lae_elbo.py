@@ -164,7 +164,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             self.timings["forward_nn"] += time.time() - start
 
             # compute mse for sample net
-            mse_running_sum += F.mse_loss(x_rec.view(*x.shape), x) if self.loss_fn == "mse" else F.cross_entropy(x_rec.view(*x.shape), x)
+            mse_running_sum += F.mse_loss(x_rec.view(*x.shape), x) if self.loss_fn == "mse" else F.cross_entropy(x_rec, x.long())
 
 
             if not self.config["one_hessian_per_sampling"]:
@@ -282,30 +282,29 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
     def validation_step(self, val_batch, batch_idx):
         x, y = val_batch
-        b, c, h, w = x.shape
+        #b, c, h, w = x.shape
 
         if self.no_conv:
             x = x.view(x.size(0), -1)
 
         x_rec = self.net(x)
-        loss = F.mse_loss(x_rec, x)
-
+        loss = F.mse_loss(x_rec, x) if self.loss_fn == 'mse' else F.cross_entropy(x_rec, x.long())
         self.log("val_loss", loss)
 
-        if self.current_epoch > self.last_epoch_logged_val:
-            x = x.view(b, c, h, w)
-            x_rec = x_rec.view(b, c, h, w)
-
-            img_grid = torch.clamp(torchvision.utils.make_grid(x[:4]), 0, 1)
-            self.logger.experiment.add_image(
-                "val/orig_images", img_grid, self.current_epoch
-            )
-            img_grid = torch.clamp(torchvision.utils.make_grid(x_rec[:4]), 0, 1)
-            self.logger.experiment.add_image(
-                "val/recons_images", img_grid, self.current_epoch
-            )
-            self.logger.experiment.flush()
-            self.last_epoch_logged_val += 1
+#        if self.current_epoch > self.last_epoch_logged_val:
+#            x = x.view(b, c, h, w)
+#            x_rec = x_rec.view(b, c, h, w)
+#
+#            img_grid = torch.clamp(torchvision.utils.make_grid(x[:4]), 0, 1)
+#            self.logger.experiment.add_image(
+#                "val/orig_images", img_grid, self.current_epoch
+#            )
+#            img_grid = torch.clamp(torchvision.utils.make_grid(x_rec[:4]), 0, 1)
+#            self.logger.experiment.add_image(
+#                "val/recons_images", img_grid, self.current_epoch
+#            )
+#            self.logger.experiment.flush()
+#            self.last_epoch_logged_val += 1
 
 
 def inference_on_dataset(net, samples, val_loader, latent_dim):

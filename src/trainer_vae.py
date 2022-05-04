@@ -48,7 +48,7 @@ class LitVariationalAutoEncoder(pl.LightningModule):
         return mean, log_sigma
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
         return optimizer
 
     def training_step(self, train_batch, batch_idx):
@@ -295,7 +295,7 @@ def train_vae(config):
     logger = TensorBoardLogger(save_dir="../", version=1, name="lightning_logs")
 
     # early stopping
-    callbacks = [EarlyStopping(monitor="val_loss")]
+    callbacks = [EarlyStopping(monitor="val_loss", patience=8)]
 
     # training
     n_device = torch.cuda.device_count()

@@ -24,7 +24,7 @@ from visualizer import (
 )
 from datetime import datetime
 import json
-from utils import create_exp_name
+from utils import create_exp_name, compute_typicality_score
 import torchvision
 
 
@@ -229,6 +229,12 @@ def inference_on_latent_grid(decoder, z_mu, N, device):
     return xg_mesh, yg_mesh, sigma_vector, n_points_axis
 
 
+def compute_likelihood(x, x_rec):
+    likelihood = ((x_rec.reshape(*x.shape) - x) ** 2).mean(axis=(1, 2, 3))
+
+    return likelihood.reshape(-1, 1)
+
+
 def test_mcdropout_ae(config):
 
     # initialize_model
@@ -241,20 +247,16 @@ def test_mcdropout_ae(config):
         .eval()
         .to(device)
     )
-    encoder.load_state_dict(
-        torch.load(f"../weights/{path}/encoder.pth")
-    )
+    encoder.load_state_dict(torch.load(f"../weights/{path}/encoder.pth"))
 
     decoder = (
         get_decoder(config, latent_size, dropout=config["dropout_rate"])
         .eval()
         .to(device)
     )
-    decoder.load_state_dict(
-        torch.load(f"../weights/{path}/decoder.pth")
-    )
+    decoder.load_state_dict(torch.load(f"../weights/{path}/decoder.pth"))
 
-    _, val_loader = get_data(config["dataset"], config["batch_size"])
+    train_loader, val_loader = get_data(config["dataset"], config["batch_size"])
 
     # number of mc samples
     N = config["test_samples"]
@@ -292,14 +294,43 @@ def test_mcdropout_ae(config):
 
         plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
 
+        likelihood_in = compute_likelihood(x, x_rec_mu)
+        likelihood_out = compute_likelihood(ood_x, ood_x_rec_mu)
+
         plot_latent_space_ood(
             path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
         )
-        plot_ood_distributions(path, z_sigma, ood_z_sigma, x_rec_sigma, ood_x_rec_sigma)
 
+        plot_ood_distributions(path, likelihood_in, likelihood_out, "likelihood")
+        plot_ood_distributions(path, z_sigma, ood_z_sigma, "z")
+        plot_ood_distributions(path, x_rec_sigma, ood_x_rec_sigma, "x_rec")
+
+        compute_and_plot_roc_curves(
+            path, likelihood_in, likelihood_out, pre_fix="likelihood_"
+        )
         compute_and_plot_roc_curves(path, z_sigma, ood_z_sigma, pre_fix="latent_")
         compute_and_plot_roc_curves(
             path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_"
+        )
+
+        # evaluate on train dataset
+        (
+            train_x,
+            _,
+            _,
+            train_x_rec_mu,
+            _,
+            _,
+        ) = inference_on_dataset(encoder, decoder, train_loader, N, device)
+
+        train_likelihood = compute_likelihood(train_x, train_x_rec_mu)
+
+        typicality_in = compute_typicality_score(train_likelihood, likelihood_in)
+        typicality_ood = compute_typicality_score(train_likelihood, likelihood_out)
+
+        plot_ood_distributions(path, typicality_in, typicality_ood, name="typicality")
+        compute_and_plot_roc_curves(
+            path, typicality_in, typicality_ood, pre_fix="typicality_"
         )
 
 

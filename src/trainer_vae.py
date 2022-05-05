@@ -25,7 +25,7 @@ from visualizer import (
 from datetime import datetime
 import json
 import torchvision
-from utils import create_exp_name
+from utils import create_exp_name, compute_typicality_score
 
 
 class LitVariationalAutoEncoder(pl.LightningModule):
@@ -223,6 +223,24 @@ def inference_on_dataset(
     return x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels
 
 
+def compute_likelihood(x, x_rec, z_mu, z_sigma, alpha, log_sigma_rec=None):
+
+    kl = -0.5 * np.sum(1 + np.log(z_sigma**2) - z_mu**2 - z_sigma**2, axis=1)
+
+    # reconstruction term:
+    if log_sigma_rec is not None:
+        likelihood = (
+            (x_rec.reshape(*x.shape) - x) / np.exp(log_sigma_rec.reshape(*x.shape)) ** 2
+            + log_sigma_rec.reshape(*x.shape)
+        ).mean(axis=(1, 2, 3))
+    else:
+        likelihood = ((x_rec.reshape(*x.shape) - x) ** 2).mean(axis=(1, 2, 3))
+
+    likelihood = likelihood + alpha * kl
+
+    return likelihood.reshape(-1, 1)
+
+
 def inference_on_latent_grid(mu_decoder, var_decoder, z_mu, device):
 
     # Grid for probability map
@@ -276,7 +294,7 @@ def test_vae(config):
     else:
         var_decoder = None
 
-    _, val_loader = get_data(config["dataset"], config["batch_size"])
+    train_loader, val_loader = get_data(config["dataset"], config["batch_size"])
 
     # forward eval
     x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = inference_on_dataset(
@@ -311,17 +329,62 @@ def test_vae(config):
         ) = inference_on_dataset(
             mu_encoder, var_encoder, mu_decoder, var_decoder, ood_val_loader, device
         )
-        
+
         plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
+
+        likelihood_in = compute_likelihood(
+            x, x_rec_mu, z_mu, z_sigma, config["kl_weight"], x_rec_sigma
+        )
+        likelihood_out = compute_likelihood(
+            ood_x,
+            ood_x_rec_mu,
+            ood_z_mu,
+            ood_z_sigma,
+            config["kl_weight"],
+            ood_x_rec_sigma,
+        )
 
         plot_latent_space_ood(
             path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
         )
-        plot_ood_distributions(path, z_sigma, ood_z_sigma, x_rec_sigma, ood_x_rec_sigma)
+        plot_ood_distributions(path, likelihood_in, likelihood_out, "likelihood")
+        plot_ood_distributions(path, z_sigma, ood_z_sigma, "z")
+        plot_ood_distributions(path, x_rec_sigma, ood_x_rec_sigma, "x_rec")
 
+        compute_and_plot_roc_curves(
+            path, likelihood_in, likelihood_out, pre_fix="likelihood_"
+        )
         compute_and_plot_roc_curves(path, z_sigma, ood_z_sigma, pre_fix="latent_")
         compute_and_plot_roc_curves(
             path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_"
+        )
+
+        (
+            train_x,
+            train_z_mu,
+            train_z_sigma,
+            train_x_rec_mu,
+            train_x_rec_sigma,
+            _,
+        ) = inference_on_dataset(
+            mu_encoder, var_encoder, mu_decoder, var_decoder, train_loader, device
+        )
+
+        train_likelihood = compute_likelihood(
+            train_x,
+            train_x_rec_mu,
+            train_z_mu,
+            train_z_sigma,
+            config["kl_weight"],
+            train_x_rec_sigma,
+        )
+
+        typicality_in = compute_typicality_score(train_likelihood, likelihood_in)
+        typicality_ood = compute_typicality_score(train_likelihood, likelihood_out)
+
+        plot_ood_distributions(path, typicality_in, typicality_ood, name="typicality")
+        compute_and_plot_roc_curves(
+            path, typicality_in, typicality_ood, pre_fix="typicality_"
         )
 
 

@@ -119,39 +119,22 @@ def plot_latent_space_ood(
     fig.savefig(f"../figures/{path}/ood_latent_space.png")
 
 
-def plot_ood_distributions(path, z_sigma, ood_z_sigma, x_rec_sigma, ood_x_rec_sigma):
+def plot_ood_distributions(path, sigma, ood_sigma, name=""):
 
-    if z_sigma is not None:
-        z_sigma = np.sum(z_sigma, axis=1)
-        ood_z_sigma = np.sum(ood_z_sigma, axis=1)
-        z = pd.DataFrame(
-            np.concatenate([z_sigma[:, None], ood_z_sigma[:, None]], axis=1),
-            columns=["id", "ood"],
-        )
+    sigma = np.sum(sigma, axis=1)
+    ood_sigma = np.sum(ood_sigma, axis=1)
+    z = pd.DataFrame(
+        np.concatenate([sigma[:, None], ood_sigma[:, None]], axis=1),
+        columns=["id", "ood"],
+    )
 
-        fig, ax = plt.subplots(1, 1, figsize=(9, 9))
-        for col in ["id", "ood"]:
-            sns.kdeplot(z[col], shade=True, label=col)
-        plt.legend()
-        fig.savefig(f"../figures/{path}/ood_z_sigma_distribution.png")
-        plt.cla()
-        plt.close()
-
-    if x_rec_sigma is not None:
-        x_rec_sigma = np.sum(x_rec_sigma, axis=1)
-        ood_x_rec_sigma = np.sum(ood_x_rec_sigma, axis=1)
-        x_rec = pd.DataFrame(
-            np.concatenate([x_rec_sigma[:, None], ood_x_rec_sigma[:, None]], axis=1),
-            columns=["id", "ood"],
-        )
-
-        fig, ax = plt.subplots(1, 1, figsize=(9, 9))
-        for col in ["id", "ood"]:
-            sns.kdeplot(x_rec[col], shade=True, label=col)
-        plt.legend()
-        fig.savefig(f"../figures/{path}/ood_x_rec_sigma_distribution.png")
-        plt.cla()
-        plt.close()
+    fig, ax = plt.subplots(1, 1, figsize=(9, 9))
+    for col in ["id", "ood"]:
+        sns.kdeplot(z[col], shade=True, label=col)
+    plt.legend()
+    fig.savefig(f"../figures/{path}/ood_{name}_sigma_distribution.png")
+    plt.cla()
+    plt.close()
 
 
 def compute_and_plot_roc_curves(path, id_sigma, ood_sigma, pre_fix=""):
@@ -204,13 +187,13 @@ def compute_and_plot_roc_curves(path, id_sigma, ood_sigma, pre_fix=""):
     auc = torchmetrics.AUC(reorder=True)
     auprc_score = auc(recall, precision)
     metrics["auprc"] = float(auprc_score.numpy())
-    
+
     # compute false positive rate at 80
     num_id = len(id_sigma)
-    
+
     for p in range(0, 100, 10):
         # if there is no difference in variance
-        if np.var(id_sigma) < 1e-6: 
+        if np.var(id_sigma) < 1e-6:
             metrics[f"fpr{p}"] = "none"
         else:
             metrics[f"fpr{p}"] = float(fpr[int(p / 100.0 * num_id)].numpy())

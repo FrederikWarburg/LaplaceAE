@@ -34,7 +34,7 @@ import numpy as np
 from hessian import layerwise as lw
 from hessian import backpack as bp
 from backpack import extend
-from utils import create_exp_name
+from utils import create_exp_name, compute_typicality_score
 from hessian import sampler
 
 samples = {
@@ -331,19 +331,23 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
 
     hook = net[latent_dim - 1].register_forward_hook(fw_hook_get_latent)
 
-    x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse = [], [], [], [], [], [], []
+    x, z_mu, z_sigma, x_rec_mu = [], [], [], []
+    x_rec_sigma, labels, mse, likelihood = [], [], [], []
     for i, (xi, yi) in tqdm(enumerate(val_loader)):
         xi = xi.to(device)
         with torch.inference_mode():
 
             x_reci = []
             z_i = []
+            likelihood_running_sum = 0
 
             for net_sample in samples:
 
                 # replace the network parameters with the sampled parameters
                 vector_to_parameters(net_sample, net.parameters())
-                x_reci += [net(xi)]
+                x_rec = net(xi)
+                x_reci += [x_rec]
+                likelihood_running_sum += F.mse_loss(x_rec.view(*xi.shape), xi).cpu()
 
             x_reci = torch.cat(x_reci)
             z_i = torch.cat(z_i)
@@ -363,7 +367,7 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
             x += [xi.cpu()]
 
             mse += [F.mse_loss(x_reci_mu.view(*xi.shape), xi).cpu()]
-            # nll += []
+            likelihood += [likelihood_running_sum / len(samples)]
 
     x = torch.cat(x, dim=0).numpy()
     labels = torch.cat(labels, dim=0).numpy()
@@ -372,11 +376,12 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
     x_rec_mu = torch.stack(x_rec_mu).numpy()
     x_rec_sigma = torch.stack(x_rec_sigma).numpy()
     mse = torch.stack(mse).numpy()
+    likelihood = torch.stack(likelihood).numpy().reshape(-1, 1)
 
     # remove forward hook
     hook.remove()
 
-    return x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse
+    return x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse, likelihood
 
 
 def inference_on_latent_grid(net, samples, z_mu, latent_dim, dummy):
@@ -457,14 +462,21 @@ def test_lae(config, batch_size=1):
     mu_q = parameters_to_vector(net.parameters()).unsqueeze(1)
     samples = hessian_approx.sample(mu_q, sigma_q, n_samples=config["test_samples"])
 
-    _, val_loader = get_data(
+    train_loader, val_loader = get_data(
         config["dataset"], batch_size, config["missing_data_imputation"]
     )
 
     # evaluate on dataset
-    x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse = inference_on_dataset(
-        net, samples, val_loader, latent_dim
-    )
+    (
+        x,
+        z_mu,
+        z_sigma,
+        x_rec_mu,
+        x_rec_sigma,
+        labels,
+        mse,
+        likelihood,
+    ) = inference_on_dataset(net, samples, val_loader, latent_dim)
 
     nll = (x_rec_mu - np.reshape(x, x_rec_mu.shape)) ** 2 / (
         2 * x_rec_sigma**2
@@ -510,19 +522,38 @@ def test_lae(config, batch_size=1):
             ood_x_rec_sigma,
             ood_labels,
             ood_mse,
+            ood_likelihood,
         ) = inference_on_dataset(net, samples, ood_val_loader, latent_dim)
 
         plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
 
-        plot_ood_distributions(path, None, None, x_rec_sigma, ood_x_rec_sigma)
+        plot_ood_distributions(path, x_rec_sigma, ood_x_rec_sigma, name="x_rec")
+        plot_ood_distributions(path, z_sigma, ood_z_sigma, name="z")
+        plot_ood_distributions(path, likelihood, ood_likelihood, name="likelihood")
 
         plot_latent_space_ood(
             path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
         )
 
+        compute_and_plot_roc_curves(
+            path, likelihood, ood_likelihood, pre_fix="likelihood_"
+        )
         compute_and_plot_roc_curves(path, z_sigma, ood_z_sigma, pre_fix="latent_")
         compute_and_plot_roc_curves(
             path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_"
+        )
+
+        # evaluate on train dataset
+        _, _, _, _, _, _, _, train_likelihood = inference_on_dataset(
+            net, samples, train_loader, latent_dim
+        )
+
+        typicality_in = compute_typicality_score(train_likelihood, likelihood)
+        typicality_ood = compute_typicality_score(train_likelihood, ood_likelihood)
+
+        plot_ood_distributions(path, typicality_in, typicality_ood, name="typicality")
+        compute_and_plot_roc_curves(
+            path, typicality_in, typicality_ood, pre_fix="typicality_"
         )
 
 

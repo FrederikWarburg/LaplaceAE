@@ -107,7 +107,7 @@ class MseHessianCalculator(HessianCalculator):
         feature_maps = [x] + feature_maps
 
         # if we use diagonal approximation or first layer is flatten
-        tmp = torch.ones(output_size, device=x.device) # [HWC]
+        tmp = torch.ones(output_size, device=x.device)  # [HWC]
         if self.method in ("block", "exact"):
             tmp = torch.diag_embed(tmp).expand(bs, -1, -1)
         elif self.method in ("approx", "mix"):
@@ -192,22 +192,28 @@ class CrossEntropyHessianCalculator(HessianCalculator):
             bs, classes, output_size = pred.shape
 
         feature_maps = [x] + feature_maps
-        
+
         # if we use diagonal approximation or first layer is flatten
-        
-        prob = F.softmax(pred, dim=1) # [B, Classes, C, H, W]
-        prob = prob.reshape(bs, classes, output_size) #[B, Classes, CHW]
+
+        prob = F.softmax(pred, dim=1)  # [B, Classes, C, H, W]
+        prob = prob.reshape(bs, classes, output_size)  # [B, Classes, CHW]
         if self.method in ("block", "exact"):
-            prob = prob.movedim(1,2).reshape(bs, classes*output_size)
-            tmp = torch.zeros(bs, classes*output_size, classes*output_size, device=x.device)
+            prob = prob.movedim(1, 2).reshape(bs, classes * output_size)
+            tmp = torch.zeros(
+                bs, classes * output_size, classes * output_size, device=x.device
+            )
             for b in range(bs):
                 blocks = torch.chunk(prob[b], output_size)
-                blocks = [torch.einsum("c,d->cd", block, block) - torch.diag_embed(block, dim1=-1, dim2=-2) for block in blocks]
+                blocks = [
+                    torch.einsum("c,d->cd", block, block)
+                    - torch.diag_embed(block, dim1=-1, dim2=-2)
+                    for block in blocks
+                ]
                 tmp[b] = torch.block_diag(*blocks)
 
         elif self.method in ("approx", "mix"):
-            prob = prob.reshape(bs, classes*output_size)
-            tmp = prob ** 2 - prob
+            prob = prob.reshape(bs, classes * output_size)
+            tmp = prob**2 - prob
         else:
             raise NotImplementedError
 

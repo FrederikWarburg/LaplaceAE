@@ -12,6 +12,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
+import torch.nn.functional as F
 import time
 from copy import deepcopy
 
@@ -53,13 +54,19 @@ def inference_on_dataset(la, encoder, val_loader, latent_dim, device):
 
             if encoder is None:
                 mu_rec, var_rec, mu_latent, var_latent = la(
-                    X, pred_type=pred_type, return_latent_representation=True, latent_dim = latent_dim,
+                    X,
+                    pred_type=pred_type,
+                    return_latent_representation=True,
+                    latent_dim=latent_dim,
                 )
                 z_sigma += [var_latent.sqrt()]
             else:
                 mu_latent = encoder(X)
                 mu_rec, var_rec = la(
-                    mu_latent, pred_type=pred_type, return_latent_representation=False, latent_dim = latent_dim,
+                    mu_latent,
+                    pred_type=pred_type,
+                    return_latent_representation=False,
+                    latent_dim=latent_dim,
                 )
 
             x_rec_mu += [mu_rec.detach()]
@@ -96,7 +103,9 @@ def inference_on_latent_grid(la, encoder, z_mu, latent_dim, device):
         with torch.inference_mode():
 
             if encoder is None:
-                f_mu, f_var, _z_grid, _z_grid_var = la.sample_from_decoder_only(z_grid, latent_dim=latent_dim)
+                f_mu, f_var, _z_grid, _z_grid_var = la.sample_from_decoder_only(
+                    z_grid, latent_dim=latent_dim
+                )
                 # small check to enture that everythings is okay.
 
                 assert torch.all(torch.isclose(_z_grid, z_grid))
@@ -104,7 +113,10 @@ def inference_on_latent_grid(la, encoder, z_mu, latent_dim, device):
 
             else:
                 f_mu, f_var = la(
-                    z_grid, pred_type=pred_type, return_latent_representation=False, latent_dim=latent_dim,
+                    z_grid,
+                    pred_type=pred_type,
+                    return_latent_representation=False,
+                    latent_dim=latent_dim,
                 )
 
         all_f_mu += [f_mu.cpu()]
@@ -126,13 +138,13 @@ def test_lae_decoder(config):
 
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    path = f"{config['dataset']}/lae_post_hoc_[use_la_encoder=False]/{config['exp_name']}"
+    path = (
+        f"{config['dataset']}/lae_post_hoc_[use_la_encoder=False]/{config['exp_name']}"
+    )
 
     encoder = get_encoder(config, config["latent_size"]).eval().to(device)
     latent_dim = len(encoder.encoder) - 1
-    encoder.load_state_dict(
-        torch.load(f"../weights/{path}/encoder.pth")
-    )
+    encoder.load_state_dict(torch.load(f"../weights/{path}/encoder.pth"))
 
     la = load_laplace(f"../weights/{path}/decoder.pkl")
 
@@ -158,43 +170,50 @@ def test_lae_decoder(config):
         x = x.reshape(-1, 1, 28, 28)
 
     plot_reconstructions(path, x, x_rec_mu, x_rec_sigma)
-    
+
     if config["ood"]:
         _, val_loader = get_data(config["dataset"], config["batch_size"])
 
-        ood_x, ood_labels, ood_z, _, ood_x_rec_mu, ood_x_rec_sigma = inference_on_dataset(
-            la, encoder, ood_val_loader, device
-        )
+        (
+            ood_x,
+            ood_labels,
+            ood_z,
+            _,
+            ood_x_rec_mu,
+            ood_x_rec_sigma,
+        ) = inference_on_dataset(la, encoder, ood_val_loader, device)
 
         if config["dataset"] in ("mnist", "fashionmnist"):
             ood_x = ood_x.reshape(-1, 1, 28, 28)
 
-        plot_reconstructions(
-            path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_"
+        plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
+
+        plot_ood_distributions(path, x_rec_sigma, ood_x_rec_sigma, "x_rec")
+
+        compute_and_plot_roc_curves(
+            path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_"
         )
-
-        plot_ood_distributions(path, None, None, x_rec_sigma, ood_x_rec_sigma)
-
-        compute_and_plot_roc_curves(path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_")
 
 
 def test_lae_encoder_decoder(config):
 
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    path = f"{config['dataset']}/lae_post_hoc_[use_la_encoder=True]/{config['exp_name']}"
-    
+    path = (
+        f"{config['dataset']}/lae_post_hoc_[use_la_encoder=True]/{config['exp_name']}"
+    )
+
     encoder = get_encoder(config, config["latent_size"]).eval().to(device)
     latent_dim = len(encoder.encoder) - 1
 
     la = load_laplace(f"../weights/{path}/ae.pkl")
 
     _, val_loader = get_data(config["dataset"], config["batch_size"])
-    
+
     x, labels, z_mu, z_sigma, x_rec_mu, x_rec_sigma = inference_on_dataset(
-        la, None, val_loader, latent_dim,  device
+        la, None, val_loader, latent_dim, device
     )
-    
+
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
         la, None, z_mu, latent_dim, device
     )
@@ -227,17 +246,30 @@ def test_lae_encoder_decoder(config):
         if config["dataset"] in ("mnist", "fashionmnist"):
             ood_x = ood_x.reshape(-1, 1, 28, 28)
 
-        plot_reconstructions(
-            path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_"
-        )
+        plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
+
+        likelihood_in = compute_likelihood(x, x_rec_mu)
+        likelihood_out = compute_likelihood(ood_x, ood_x_rec_mu)
 
         plot_latent_space_ood(
             path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
         )
-        plot_ood_distributions(path, z_sigma, ood_z_sigma, x_rec_sigma, ood_x_rec_sigma)
+        plot_ood_distributions(path, likelihood_in, likelihood_out, "likelihood")
+        plot_ood_distributions(path, z_sigma, ood_z_sigma, "z")
+        plot_ood_distributions(path, x_rec_sigma, ood_x_rec_sigma, "x_rec")
 
+        compute_and_plot_roc_curves(
+            path, likelihood_in, likelihood_out, pre_fix="likelihood_"
+        )
         compute_and_plot_roc_curves(path, z_sigma, ood_z_sigma, pre_fix="latent_")
-        compute_and_plot_roc_curves(path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_")
+        compute_and_plot_roc_curves(
+            path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_"
+        )
+
+
+def compute_likelihood(x, x_rec):
+    likelihood = F.mse_loss(x_rec.view(*x.shape), x)
+    return likelihood
 
 
 def test_lae(config):
@@ -299,7 +331,9 @@ def fit_laplace_to_enc_and_dec(encoder, decoder, config):
         y += [X.view(X.size(0), -1)]
     y = torch.cat(y, dim=0)
     x = torch.cat(x, dim=0)
-    train_loader = DataLoader(TensorDataset(x, y), batch_size=config["batch_size"], pin_memory=True)
+    train_loader = DataLoader(
+        TensorDataset(x, y), batch_size=config["batch_size"], pin_memory=True
+    )
 
     # gather encoder and decoder into one model:
     def get_model(encoder, decoder):

@@ -74,7 +74,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         decoder = get_decoder(config, latent_size)
 
         if config["pretrained"]:
-            path = f"../weights/{config['dataset']}/ae_[use_var_dec=False]"
+            path = f"../weights/{config['dataset']}/ae_[use_var_dec=False]/{config['exp_name']}"
             encoder.load_state_dict(torch.load(f"{path}/encoder.pth"))
             decoder.load_state_dict(torch.load(f"{path}/mu_decoder.pth"))
 

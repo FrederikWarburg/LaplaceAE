@@ -83,3 +83,49 @@ class MseHessianCalculator(HessianCalculator):
             return torch.cat(
                 [p.diag_ggn_exact.data.flatten() for p in model.parameters()]
             )
+
+
+class CrossEntropyHessianCalculator(HessianCalculator):
+    def __init__(self, model=None):
+        super(CrossEntropyHessianCalculator, self).__init__()
+        self.factor = 1  # for regression
+        self.stochastic = False
+        self.context = DiagGGNMC if self.stochastic else DiagGGNExact
+        self.lossfunc = torch.nn.CrossEntropyLoss(reduction="sum")
+        self.lossfunc = extend(self.lossfunc)
+        if model is not None:
+            self.model = extend(model)
+
+    def compute_batch(self, x, *args, **kwargs):
+        x = x.to(self.device)
+        loss, dggn = self.diag(x, x)
+
+        return dggn
+
+    def __call__(self, net, feature_maps, X, **kwargs):
+        b = X.shape[0]
+        y_hat = net(X)
+        loss = self.lossfunc(y_hat.view(b, -1), X.view(b, -1))
+        with backpack(self.context()):
+            loss.backward()
+        loss = loss.detach()
+        return self.factor * self._get_diag_ggn(net).detach()
+
+    def diag(self, X, y, **kwargs):
+        b = X.shape[0]
+
+        f = self.model(X)
+        loss = self.lossfunc(f.view(b, -1), y.view(b, -1))
+        with backpack(self.context()):
+            loss.backward()
+        dggn = self._get_diag_ggn(self.model)
+
+        return self.factor * loss.detach(), self.factor * dggn
+
+    def _get_diag_ggn(self, model):
+        if self.stochastic:
+            return torch.cat([p.diag_ggn_mc.data.flatten() for p in model.parameters()])
+        else:
+            return torch.cat(
+                [p.diag_ggn_exact.data.flatten() for p in model.parameters()]
+            )

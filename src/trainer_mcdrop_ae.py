@@ -1,3 +1,4 @@
+from builtins import breakpoint
 import os
 import torch
 from torch import nn
@@ -232,7 +233,7 @@ def test_mcdropout_ae(config):
 
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    path = f"{config['dataset']}/ae_dropout"
+    path = f"{config['dataset']}/mcdropout_ae/{config['exp_name']}"
 
     latent_size = 2
     encoder = (
@@ -241,7 +242,7 @@ def test_mcdropout_ae(config):
         .to(device)
     )
     encoder.load_state_dict(
-        torch.load(f"../weights/{config['dataset']}/mcdropout_ae/encoder.pth")
+        torch.load(f"../weights/{path}/encoder.pth")
     )
 
     decoder = (
@@ -250,11 +251,10 @@ def test_mcdropout_ae(config):
         .to(device)
     )
     decoder.load_state_dict(
-        torch.load(f"../weights/{config['dataset']}/mcdropout_ae/decoder.pth")
+        torch.load(f"../weights/{path}/decoder.pth")
     )
 
     _, val_loader = get_data(config["dataset"], config["batch_size"])
-    _, ood_val_loader = get_data(config["ood_dataset"], config["batch_size"])
 
     # number of mc samples
     N = config["test_samples"]
@@ -263,14 +263,6 @@ def test_mcdropout_ae(config):
     x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = inference_on_dataset(
         encoder, decoder, val_loader, N, device
     )
-    (
-        ood_x,
-        ood_z_mu,
-        ood_z_sigma,
-        ood_x_rec_mu,
-        ood_x_rec_sigma,
-        ood_labels,
-    ) = inference_on_dataset(encoder, decoder, ood_val_loader, N, device)
 
     # Grid for probability map
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
@@ -280,23 +272,35 @@ def test_mcdropout_ae(config):
     # create figures
     os.makedirs(f"../figures/{path}/", exist_ok=True)
 
-    if config["dataset"] != "mnist":
+    if config["dataset"] == "swissrole":
         labels = None
 
     plot_latent_space(path, z_mu, labels, xg_mesh, yg_mesh, sigma_vector, n_points_axis)
 
-    if config["dataset"] == "mnist":
-        plot_reconstructions(path, x, x_rec_mu, x_rec_sigma)
-    if config["ood_dataset"] == "kmnist":
+    plot_reconstructions(path, x, x_rec_mu, x_rec_sigma)
+    if config["ood"]:
+        _, ood_val_loader = get_data(config["ood_dataset"], config["batch_size"])
+
+        (
+            ood_x,
+            ood_z_mu,
+            ood_z_sigma,
+            ood_x_rec_mu,
+            ood_x_rec_sigma,
+            ood_labels,
+        ) = inference_on_dataset(encoder, decoder, ood_val_loader, N, device)
+
         plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
 
-    plot_latent_space_ood(
-        path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
-    )
-    plot_ood_distributions(path, z_sigma, ood_z_sigma, x_rec_sigma, ood_x_rec_sigma)
+        plot_latent_space_ood(
+            path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
+        )
+        plot_ood_distributions(path, z_sigma, ood_z_sigma, x_rec_sigma, ood_x_rec_sigma)
 
-    compute_and_plot_roc_curves(path, z_sigma, ood_z_sigma, pre_fix="latent_")
-    compute_and_plot_roc_curves(path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_")
+        compute_and_plot_roc_curves(path, z_sigma, ood_z_sigma, pre_fix="latent_")
+        compute_and_plot_roc_curves(
+            path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_"
+        )
 
 
 def train_mcdropout_ae(config):
@@ -330,7 +334,7 @@ def train_mcdropout_ae(config):
     trainer.fit(model, train_loader, val_loader)
 
     # save weights
-    path = f"../weights/{config['dataset']}/mcdropout_ae/"
+    path = f"../weights/{config['dataset']}/mcdropout_ae/{config['exp_name']}"
     os.makedirs(path, exist_ok=True)
     torch.save(model.encoder.state_dict(), f"{path}/encoder.pth")
     torch.save(model.decoder.state_dict(), f"{path}/decoder.pth")

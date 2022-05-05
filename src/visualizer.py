@@ -79,8 +79,8 @@ def plot_latent_space_ood(
     min_ = np.min([np.min(z_sigma), np.min(ood_z_sigma)])
 
     # normalize sigma
-    z_sigma = ((z_sigma - min_) / (max_ - min_)) * 1
-    ood_z_sigma = ((ood_z_sigma - min_) / (max_ - min_)) * 1
+    z_sigma = ((z_sigma - min_) / (max_ - min_ + 1e-6)) * 1
+    ood_z_sigma = ((ood_z_sigma - min_) / (max_ - min_ + 1e-6)) * 1
 
     fig, ax = plt.subplots(1, 1, figsize=(9, 9))
     for i, (z_mu_i, z_sigma_i) in enumerate(zip(z_mu, z_sigma)):
@@ -204,11 +204,16 @@ def compute_and_plot_roc_curves(path, id_sigma, ood_sigma, pre_fix=""):
     auc = torchmetrics.AUC(reorder=True)
     auprc_score = auc(recall, precision)
     metrics["auprc"] = float(auprc_score.numpy())
-
+    
     # compute false positive rate at 80
     num_id = len(id_sigma)
+    
     for p in range(0, 100, 10):
-        metrics[f"fpr{p}"] = float(fpr[int(p / 100.0 * num_id)].numpy())
+        # if there is no difference in variance
+        if np.var(id_sigma) < 1e-6: 
+            metrics[f"fpr{p}"] = "none"
+        else:
+            metrics[f"fpr{p}"] = float(fpr[int(p / 100.0 * num_id)].numpy())
 
     # compute auroc
     auroc = torchmetrics.AUROC(num_classes=1)

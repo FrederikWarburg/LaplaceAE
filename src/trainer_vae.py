@@ -101,9 +101,9 @@ class LitVariationalAutoEncoder(pl.LightningModule):
     def validation_step(self, val_batch, batch_idx):
         x, y = val_batch
 
-        z_mu, z_log_var = self.forward(x)
+        z_mu, z_log_sigma = self.forward(x)
 
-        z_sigma = torch.exp(z_log_var).sqrt()
+        z_sigma = torch.exp(z_log_sigma)
         z = z_mu + torch.randn_like(z_sigma) * z_sigma
 
         mu_x_hat = self.mu_decoder(z)
@@ -118,7 +118,7 @@ class LitVariationalAutoEncoder(pl.LightningModule):
 
         else:
             # reconstruction term
-            rec = F.mse_loss(mu_x_hat, x)
+            rec = F.mse_loss(mu_x_hat.view(*x.shape), x)
 
         # kl term
         kl = -0.5 * torch.sum(1 + torch.log(z_sigma**2) - z_mu**2 - z_sigma**2)
@@ -159,7 +159,7 @@ def inference_on_dataset(
 
     x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = [], [], [], [], [], []
     for i, (xi, yi) in tqdm(enumerate(val_loader)):
-        xi = xi.view(xi.size(0), -1).to(device)
+        xi = xi.to(device)
         with torch.inference_mode():
 
             z_mu_i = mu_encoder(xi)
@@ -259,7 +259,7 @@ def test_vae(config):
 
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    path = f"{config['dataset']}/vae_[use_var_dec={config['use_var_decoder']}]"
+    path = f"{config['dataset']}/vae_[use_var_dec={config['use_var_decoder']}]/{config['exp_name']}"
 
     latent_size = 2
     mu_encoder = get_encoder(config, latent_size).eval().to(device)
@@ -277,21 +277,10 @@ def test_vae(config):
         var_decoder = None
 
     _, val_loader = get_data(config["dataset"], config["batch_size"])
-    _, ood_val_loader = get_data(config["ood_dataset"], config["batch_size"])
 
     # forward eval
     x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = inference_on_dataset(
         mu_encoder, var_encoder, mu_decoder, var_decoder, val_loader, device
-    )
-    (
-        ood_x,
-        ood_z_mu,
-        ood_z_sigma,
-        ood_x_rec_mu,
-        ood_x_rec_sigma,
-        ood_labels,
-    ) = inference_on_dataset(
-        mu_encoder, var_encoder, mu_decoder, var_decoder, ood_val_loader, device
     )
 
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = None, None, None, None
@@ -303,22 +292,37 @@ def test_vae(config):
     # create figures
     os.makedirs(f"../figures/{path}", exist_ok=True)
 
-    if config["dataset"] != "mnist":
+    if config["dataset"] == "swissrole":
         labels = None
 
     plot_latent_space(path, z_mu, labels, xg_mesh, yg_mesh, sigma_vector, n_points_axis)
 
     plot_reconstructions(path, x, x_rec_mu, x_rec_sigma)
+    if config["ood"]:
+        _, ood_val_loader = get_data(config["ood_dataset"], config["batch_size"])
 
-    plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
+        (
+            ood_x,
+            ood_z_mu,
+            ood_z_sigma,
+            ood_x_rec_mu,
+            ood_x_rec_sigma,
+            ood_labels,
+        ) = inference_on_dataset(
+            mu_encoder, var_encoder, mu_decoder, var_decoder, ood_val_loader, device
+        )
+        
+        plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
 
-    plot_latent_space_ood(
-        path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
-    )
-    plot_ood_distributions(path, z_sigma, ood_z_sigma, x_rec_sigma, ood_x_rec_sigma)
+        plot_latent_space_ood(
+            path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
+        )
+        plot_ood_distributions(path, z_sigma, ood_z_sigma, x_rec_sigma, ood_x_rec_sigma)
 
-    compute_and_plot_roc_curves(path, z_sigma, ood_z_sigma, pre_fix="latent_")
-    compute_and_plot_roc_curves(path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_")
+        compute_and_plot_roc_curves(path, z_sigma, ood_z_sigma, pre_fix="latent_")
+        compute_and_plot_roc_curves(
+            path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_"
+        )
 
 
 def train_vae(config):
@@ -352,7 +356,7 @@ def train_vae(config):
     trainer.fit(model, train_loader, val_loader)
 
     # save weights
-    path = f"{config['dataset']}/vae_[use_var_dec={config['use_var_decoder']}]"
+    path = f"{config['dataset']}/vae_[use_var_dec={config['use_var_decoder']}]/{config['exp_name']}"
     os.makedirs(f"../weights/{path}", exist_ok=True)
     torch.save(model.mu_encoder.state_dict(), f"../weights/{path}/mu_encoder.pth")
     torch.save(model.var_encoder.state_dict(), f"../weights/{path}/var_encoder.pth")

@@ -1,3 +1,4 @@
+from builtins import breakpoint
 import os
 import torch
 from torch import nn
@@ -18,6 +19,7 @@ from visualizer import (
     plot_reconstructions,
     plot_latent_space,
     plot_ood_distributions,
+    compute_and_plot_roc_curves,
 )
 from datetime import datetime
 import json
@@ -194,7 +196,7 @@ def test_ae(config):
 
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    path = f"{config['dataset']}/ae_[use_var_dec={config['use_var_decoder']}]"
+    path = f"{config['dataset']}/ae_[use_var_dec={config['use_var_decoder']}]/{config['exp_name']}"
 
     latent_size = config["latent_size"]
     encoder = get_encoder(config, latent_size).eval().to(device)
@@ -243,7 +245,12 @@ def test_ae(config):
 
         plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
 
-        plot_ood_distributions(path, None, None, x_rec_sigma, ood_x_rec_sigma)
+        if config["use_var_decoder"]:
+            plot_ood_distributions(path, None, None, x_rec_sigma, ood_x_rec_sigma)
+    
+            compute_and_plot_roc_curves(
+                path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_"
+            )
 
 
 def train_ae(config):
@@ -277,7 +284,7 @@ def train_ae(config):
     trainer.fit(model, train_loader, val_loader)
 
     # save weights
-    path = f"{config['dataset']}/ae_[use_var_dec={config['use_var_decoder']}]"
+    path = f"{config['dataset']}/ae_[use_var_dec={config['use_var_decoder']}]/{config['exp_name']}"
 
     os.makedirs(f"../weights/{path}", exist_ok=True)
     torch.save(model.encoder.state_dict(), f"../weights/{path}/encoder.pth")

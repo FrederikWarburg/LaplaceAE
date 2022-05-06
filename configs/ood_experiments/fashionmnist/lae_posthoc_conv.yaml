@@ -1,11 +1,13 @@
+
 # experiment name
 exp_name : "ood_experiment/"
 
 # training
-train : False
+train : True
 
 # test
 ood : True
+test_samples: 100
 
 # data
 dataset : "fashionmnist"
@@ -14,6 +16,6 @@ batch_size: 50
 
 # model
 pretrained : False
-no_conv : True
+no_conv : False
 latent_size : 2
-use_var_decoder : True
+use_la_encoder : True # this will fit the laplace to both encoder and decoder

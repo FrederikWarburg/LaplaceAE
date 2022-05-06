@@ -1,18 +1,14 @@
-
 # experiment name
-exp_name : "ood_experiment/"
+exp_name : "mnist_model_selection/"
 
 # training
 train : True
-train_samples: 1
-kl_weight : -1
 
 # test
-ood : True
-test_samples: 1
+ood : False
 
 # data
-dataset : "fashionmnist"
+dataset : "mnist"
 ood_dataset : "mnist"
 batch_size: 50
 
@@ -20,3 +16,4 @@ batch_size: 50
 pretrained : False
 no_conv : True
 latent_size : 2
+use_var_decoder : True

@@ -1,15 +1,15 @@
 # experiment name
-exp_name : "ood_experiment/"
+exp_name : "mnist_model_selection/"
 
 # training
 train : True
 
 # test
-ood : True
+ood : False
 test_samples: 100
 
 # data
-dataset : "fashionmnist"
+dataset : "mnist"
 ood_dataset : "mnist"
 batch_size: 50
 

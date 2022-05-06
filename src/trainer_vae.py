@@ -440,10 +440,19 @@ if __name__ == "__main__":
         default="../configs/vae.yaml",
         help="path to config you want to use",
     )
+    parser.add_argument(
+        "--version",
+        type=int,
+        default=-1,
+        help="version (-1 is ignored)",
+    )
     args = parser.parse_args()
 
     with open(args.config) as file:
         config = yaml.full_load(file)
+
+    if args.version >= 0:
+        config["exp_name"] = f"{config['exp_name']}/{args.version}"
 
     print(json.dumps(config, indent=4))
     config["exp_name"] = create_exp_name(config)

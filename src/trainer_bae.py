@@ -123,7 +123,7 @@ class LitAutoEncoder(pl.LightningModule):
 def inference_on_dataset(net, val_loader, samples, device):
 
     x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = [], [], [], [], [], []
-    num_bs = len(val_loader)
+    kl_weight = 1/float(len(val_loader)) if config["kl_weight"] < 0 else config["kl_weight"]
     for i, (xi, yi) in tqdm(enumerate(val_loader)):
         b, c, h, w = xi.shape
         xi = xi.view(b, -1)
@@ -131,7 +131,7 @@ def inference_on_dataset(net, val_loader, samples, device):
 
         with torch.inference_mode():
             (
-                _,
+                loss,
                 _,
                 _,
                 negative_log_likelihood,
@@ -139,7 +139,7 @@ def inference_on_dataset(net, val_loader, samples, device):
                 x_reci_sigma,
                 zi_mu,
                 zi_sigma,
-            ) = net.sample_elbo(xi, xi, num_bs, samples)
+            ) = net.sample_elbo(xi, xi, kl_weight, samples)
 
             x += [xi.view(b, c, h, w).cpu()]
             z_mu += [zi_mu.cpu()]
@@ -155,7 +155,7 @@ def inference_on_dataset(net, val_loader, samples, device):
     x_rec_mu = torch.cat(x_rec_mu, dim=0).numpy()
     x_rec_sigma = torch.cat(x_rec_sigma, dim=0).numpy()
 
-    return x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, negative_log_likelihood
+    return x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, loss
 
 
 def inference_on_latent_grid(net, z, samples, device):
@@ -191,7 +191,7 @@ def test_ae(config):
     path = f"{config['dataset']}/bae/{config['exp_name']}"
 
     latent_size = config["latent_size"]
-    net = BayesianAE(config, latent_size).eval().to(device)
+    net = BayesianAE(latent_size).eval().to(device)
     net.load_state_dict(torch.load(f"../weights/{path}/net.pth"))
 
     train_loader, val_loader = get_data(config["dataset"], config["batch_size"])
@@ -208,7 +208,7 @@ def test_ae(config):
     ) = inference_on_dataset(net, val_loader, device)
 
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
-        net, z, device
+        net, z_mu, device
     )
 
     # create figures
@@ -314,10 +314,19 @@ if __name__ == "__main__":
         default="../configs/ae.yaml",
         help="path to config you want to use",
     )
+    parser.add_argument(
+        "--version",
+        type=int,
+        default=-1,
+        help="version (-1 is ignored)",
+    )
     args = parser.parse_args()
 
     with open(args.config) as file:
         config = yaml.full_load(file)
+
+    if args.version >= 0:
+        config["exp_name"] = f"{config['exp_name']}/{args.version}"
 
     print(json.dumps(config, indent=4))
     config["exp_name"] = create_exp_name(config)

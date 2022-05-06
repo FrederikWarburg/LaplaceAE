@@ -3,7 +3,7 @@
 exp_name : "ood_experiment/"
 
 # training
-train : False
+train : True
 
 # test
 ood : True

@@ -2,7 +2,7 @@
 exp_name : "ood_experiment/"
 
 # training
-train : False
+train : True
 kl_weight: 0.0001
 
 # test

@@ -79,6 +79,7 @@ class BayesianLinear(nn.Module):
         self.log_variational_posterior = 0
 
     def forward(self, input, sample=False, calculate_log_probs=False):
+        
         if self.training or sample:
             weight = self.weight.sample()
             bias = self.bias.sample()
@@ -177,7 +178,7 @@ class BayesianAE(nn.Module):
 
         return x_rec_mu, x_rec_var
 
-    def sample_elbo(self, input, target, num_bs, samples=1):
+    def sample_elbo(self, input, target, kl_weight, samples=1):
         bs, outsize = input.shape
 
         # allocate memory
@@ -220,7 +221,7 @@ class BayesianAE(nn.Module):
 
         loss = (
             log_variational_posterior - log_prior
-        ) / num_bs + negative_log_likelihood
+        ) * kl_weight + negative_log_likelihood
 
         return (
             loss,

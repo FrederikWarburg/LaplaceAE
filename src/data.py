@@ -1,4 +1,5 @@
 from builtins import breakpoint
+from src.models.protein import TOKEN_SIZE
 import torch
 import numpy as np
 from torch.utils.data import DataLoader, TensorDataset, random_split
@@ -188,6 +189,8 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
 
         seqs = torch.tensor(np.array([d[0] for d in data]))
         labels = torch.tensor(np.array([important_organisms[d[1]] for d in data]))
+        seqs = torch.nn.functional.one_hot(seqs.long(), TOKEN_SIZE).float()
+
 
         n_total = len(seqs)
         idx = np.random.permutation(n_total)

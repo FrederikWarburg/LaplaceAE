@@ -15,9 +15,10 @@ class Encoder_stochman_protein(torch.nn.Module):
         self.dropout = dropout
 
         self.encoder = nn.Sequential(
-            nn.Linear(SEQ_LEN*TOKEN_SIZE, 750),
+            nn.Reshape(-1),
+            nn.Linear(SEQ_LEN*TOKEN_SIZE, 1000),
             nn.Tanh(),
-            nn.Linear(750, 250),
+            nn.Linear(1000, 500),
             nn.Tanh(),
             nn.Linear(500, 250),
             nn.Tanh(),
@@ -25,8 +26,7 @@ class Encoder_stochman_protein(torch.nn.Module):
         )
 
     def forward(self, x):
-        x = nn.functional.one_hot(x.long(), TOKEN_SIZE)
-        return self.encoder(x.float().reshape(x.shape[0], -1))
+        return self.encoder(x)
 
 
 class Decoder_stochman_protein(torch.nn.Module):
@@ -40,10 +40,11 @@ class Decoder_stochman_protein(torch.nn.Module):
             nn.Tanh(),
             nn.Linear(250, 500),
             nn.Tanh(),
-            nn.Linear(500, 750),
+            nn.Linear(500, 1000),
             nn.Tanh(),
-            nn.Linear(750, SEQ_LEN*TOKEN_SIZE)
+            nn.Linear(1000, SEQ_LEN*TOKEN_SIZE),
+            nn.Reshape(TOKEN_SIZE, -1)
         )
 
     def forward(self, x):
-        return self.decoder(x).reshape(*x.shape[:-1], TOKEN_SIZE, -1)
+        return self.decoder(x)

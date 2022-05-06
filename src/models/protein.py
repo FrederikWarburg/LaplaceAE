@@ -5,6 +5,14 @@ SEQ_LEN = 2592
 TOKEN_SIZE = 24
 
 
+class Reshape(nn.Module):
+    def __init__(self, *shapes):
+        super().__init__()
+        self.shapes = shapes
+
+    def forward(self, x):
+        return x.reshape(x.shape[0], *self.shapes)
+
 class Encoder_protein(torch.nn.Module):
     def __init__(self, latent_size, dropout):
         super().__init__()
@@ -12,6 +20,7 @@ class Encoder_protein(torch.nn.Module):
         self.dropout = dropout
 
         self.encoder = nn.Sequential(
+            Reshape(-1),
             nn.Linear(SEQ_LEN*TOKEN_SIZE, 1000),
             nn.Tanh(),
             nn.Linear(1000, 500),
@@ -22,8 +31,7 @@ class Encoder_protein(torch.nn.Module):
         )
 
     def forward(self, x):
-        x = nn.functional.one_hot(x.long(), TOKEN_SIZE)
-        return self.encoder(x.float().reshape(x.shape[0], -1))
+        return self.encoder(x)
 
 
 class Decoder_protein(torch.nn.Module):
@@ -39,8 +47,9 @@ class Decoder_protein(torch.nn.Module):
             nn.Tanh(),
             nn.Linear(500, 1000),
             nn.Tanh(),
-            nn.Linear(1000, SEQ_LEN*TOKEN_SIZE)
+            nn.Linear(1000, SEQ_LEN*TOKEN_SIZE),
+            Reshape(TOKEN_SIZE, -1)
         )
 
     def forward(self, x):
-        return self.decoder(x).reshape(*x.shape[:-1], TOKEN_SIZE, -1)
+        return self.decoder(x)

@@ -133,7 +133,8 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         self.timings["entire_training_step"] = time.time()
 
         x, y = train_batch
-        b, c, h, w = x.shape
+        #b, c, h, w = x.shape
+        b = x.shape[0]
 
         # compute kl
         sigma_q = self.sampler.invert(self.hessian)
@@ -164,7 +165,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             self.timings["forward_nn"] += time.time() - start
 
             # compute mse for sample net
-            mse_running_sum += F.mse_loss(x_rec.view(*x.shape), x) if self.loss_fn == "mse" else F.cross_entropy(x_rec, x.long())
+            mse_running_sum += F.mse_loss(x_rec.view(*x.shape), x) if self.loss_fn == "mse" else F.cross_entropy(x_rec, x.argmax(dim=2))
 
 
             if not self.config["one_hessian_per_sampling"]:
@@ -247,36 +248,36 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             self.log("sigma_q/median", torch.median(sigma_q))
 
         # log images
-        if self.current_epoch > self.last_epoch_logged:
+        # if self.current_epoch > self.last_epoch_logged:
 
-            x = x.view(b, c, h, w)
-            x_rec = x_rec.view(b, c, h, w)
+        #     x = x.view(b, c, h, w)
+        #     x_rec = x_rec.view(b, c, h, w)
 
-            img_grid = torch.clamp(torchvision.utils.make_grid(x[:4]), 0, 1)
-            self.logger.experiment.add_image(
-                "train/orig_images", img_grid, self.current_epoch
-            )
-            img_grid = torch.clamp(torchvision.utils.make_grid(x_rec[:4]), 0, 1)
-            self.logger.experiment.add_image(
-                "train/recons_images", img_grid, self.current_epoch
-            )
+        #     img_grid = torch.clamp(torchvision.utils.make_grid(x[:4]), 0, 1)
+        #     self.logger.experiment.add_image(
+        #         "train/orig_images", img_grid, self.current_epoch
+        #     )
+        #     img_grid = torch.clamp(torchvision.utils.make_grid(x_rec[:4]), 0, 1)
+        #     self.logger.experiment.add_image(
+        #         "train/recons_images", img_grid, self.current_epoch
+        #     )
 
-            mean = torch.stack(x_recs).mean(dim=0)
-            mean = mean.view(b, c, h, w)
+        #     mean = torch.stack(x_recs).mean(dim=0)
+        #     mean = mean.view(b, c, h, w)
 
-            img_grid = torch.clamp(torchvision.utils.make_grid(mean[:4]), 0, 1)
-            self.logger.experiment.add_image(
-                "train/mean_recons_images", img_grid, self.current_epoch
-            )
-            sigma = torch.stack(x_recs).var(dim=0).sqrt()
-            sigma = sigma.view(b, c, h, w)
+        #     img_grid = torch.clamp(torchvision.utils.make_grid(mean[:4]), 0, 1)
+        #     self.logger.experiment.add_image(
+        #         "train/mean_recons_images", img_grid, self.current_epoch
+        #     )
+        #     sigma = torch.stack(x_recs).var(dim=0).sqrt()
+        #     sigma = sigma.view(b, c, h, w)
 
-            img_grid = torch.clamp(torchvision.utils.make_grid(sigma[:4]), 0, 1)
-            self.logger.experiment.add_image(
-                "train/var_recons_images", img_grid, self.current_epoch
-            )
-            self.logger.experiment.flush()
-            self.last_epoch_logged += 1
+        #     img_grid = torch.clamp(torchvision.utils.make_grid(sigma[:4]), 0, 1)
+        #     self.logger.experiment.add_image(
+        #         "train/var_recons_images", img_grid, self.current_epoch
+        #     )
+        #     self.logger.experiment.flush()
+        #     self.last_epoch_logged += 1
 
         return loss
 
@@ -284,11 +285,11 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         x, y = val_batch
         #b, c, h, w = x.shape
 
-        if self.no_conv:
-            x = x.view(x.size(0), -1)
+        #if self.no_conv:
+        #    x = x.view(x.size(0), -1)
 
         x_rec = self.net(x)
-        loss = F.mse_loss(x_rec, x) if self.loss_fn == 'mse' else F.cross_entropy(x_rec, x.long())
+        loss = F.mse_loss(x_rec, x) if self.loss_fn == 'mse' else F.cross_entropy(x_rec, x.argmax(dim=2))
         self.log("val_loss", loss)
 
 #        if self.current_epoch > self.last_epoch_logged_val:

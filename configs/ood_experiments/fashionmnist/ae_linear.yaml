@@ -1,0 +1,19 @@
+# experiment name
+exp_name : "ood_experiment/"
+
+# training
+train : False
+
+# test
+ood : True
+
+# data
+dataset : "fashionmnist"
+ood_dataset : "mnist"
+batch_size: 50
+
+# model
+pretrained : False
+no_conv : True
+latent_size : 2
+use_var_decoder : False

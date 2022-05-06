@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-
+from pytorch_lightning.callbacks import LearningRateMonitor
 from data import get_data, generate_latent_grid
 from models import get_encoder, get_decoder
 from utils import softclip
@@ -22,6 +22,10 @@ from visualizer import (
     plot_ood_distributions,
     compute_and_plot_roc_curves,
 )
+from datetime import datetime
+import json
+import torchvision
+from utils import create_exp_name, compute_typicality_score
 
 
 class LitVariationalAutoEncoder(pl.LightningModule):
@@ -32,6 +36,7 @@ class LitVariationalAutoEncoder(pl.LightningModule):
         self.loss_fn = config['loss_fn']
         self.alpha = config["kl_weight"]
         self.use_var_decoder = config["use_var_decoder"]
+        self.config = config
 
         latent_size = 2
         self.mu_encoder = get_encoder(config, latent_size)
@@ -41,6 +46,8 @@ class LitVariationalAutoEncoder(pl.LightningModule):
 
         if self.use_var_decoder:
             self.var_decoder = get_decoder(config, latent_size)
+
+        self.last_epoch_logged_val = -1
 
     def forward(self, x):
         mean = self.mu_encoder(x)
@@ -53,7 +60,6 @@ class LitVariationalAutoEncoder(pl.LightningModule):
 
     def training_step(self, train_batch, batch_idx):
         x, y = train_batch
-        x = x.view(x.size(0), -1)
         z_mu, z_log_sigma = self.forward(x)
 
         z_sigma = torch.exp(z_log_sigma)
@@ -62,11 +68,11 @@ class LitVariationalAutoEncoder(pl.LightningModule):
         mu_x_hat = self.mu_decoder(z)
 
         if self.use_var_decoder:
-            log_sigma_x_hat = softclip(self.var_decoder(z), min=-3)
+            log_sigma_x_hat = softclip(self.var_decoder(z), min=-3).view(*x.shape)
 
             # reconstruction term:
             rec = (
-                torch.pow((mu_x_hat - x) / torch.exp(log_sigma_x_hat), 2)
+                torch.pow((mu_x_hat.view(*x.shape) - x) / torch.exp(log_sigma_x_hat), 2)
                 + log_sigma_x_hat
             ).mean()
         else:
@@ -83,20 +89,19 @@ class LitVariationalAutoEncoder(pl.LightningModule):
 
     def validation_step(self, val_batch, batch_idx):
         x, y = val_batch
-        x = x.view(x.size(0), -1)
 
-        z_mu, z_log_var = self.forward(x)
+        z_mu, z_log_sigma = self.forward(x)
 
-        z_sigma = torch.exp(z_log_var).sqrt()
+        z_sigma = torch.exp(z_log_sigma)
         z = z_mu + torch.randn_like(z_sigma) * z_sigma
 
         mu_x_hat = self.mu_decoder(z)
         if self.use_var_decoder:
-            log_sigma_x_hat = softclip(self.var_decoder(z), min=-3)
+            log_sigma_x_hat = softclip(self.var_decoder(z), min=-3).view(*x.shape)
 
             # reconstruction term:
             rec = (
-                torch.pow((mu_x_hat - x) / torch.exp(log_sigma_x_hat), 2)
+                torch.pow((mu_x_hat.view(*x.shape) - x) / torch.exp(log_sigma_x_hat), 2)
                 + log_sigma_x_hat
             ).mean()
 
@@ -111,6 +116,31 @@ class LitVariationalAutoEncoder(pl.LightningModule):
         self.log("val_reconstruciton_loss", rec)
         self.log("val_kl_loss", kl)
 
+        if self.current_epoch > self.last_epoch_logged_val:
+
+            img_grid = torch.clamp(torchvision.utils.make_grid(x[:4]), 0, 1)
+            self.logger.experiment.add_image(
+                "val/orig_images", img_grid, self.current_epoch
+            )
+
+            mu_x_hat = mu_x_hat[:4].view(*x[:4].shape)
+            img_grid = torch.clamp(torchvision.utils.make_grid(mu_x_hat), 0, 1)
+            self.logger.experiment.add_image(
+                "val/mean_recons_images", img_grid, self.current_epoch
+            )
+
+            if self.use_var_decoder:
+                log_sigma_x_hat = log_sigma_x_hat[:4].view(*x[:4].shape)
+                img_grid = torch.clamp(
+                    torchvision.utils.make_grid(log_sigma_x_hat.exp()), 0, 1
+                )
+                self.logger.experiment.add_image(
+                    "val/var_recons_images", img_grid, self.current_epoch
+                )
+
+            self.logger.experiment.flush()
+            self.last_epoch_logged_val += 1
+
 
 def inference_on_dataset(
     mu_encoder, var_encoder, mu_decoder, var_decoder, val_loader, device
@@ -118,7 +148,7 @@ def inference_on_dataset(
 
     x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = [], [], [], [], [], []
     for i, (xi, yi) in tqdm(enumerate(val_loader)):
-        xi = xi.view(xi.size(0), -1).to(device)
+        xi = xi.to(device)
         with torch.inference_mode():
 
             z_mu_i = mu_encoder(xi)
@@ -182,6 +212,24 @@ def inference_on_dataset(
     return x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels
 
 
+def compute_likelihood(x, x_rec, z_mu, z_sigma, alpha, log_sigma_rec=None):
+
+    kl = -0.5 * np.sum(1 + np.log(z_sigma**2) - z_mu**2 - z_sigma**2, axis=1)
+
+    # reconstruction term:
+    if log_sigma_rec is not None:
+        likelihood = (
+            (x_rec.reshape(*x.shape) - x) / np.exp(log_sigma_rec.reshape(*x.shape)) ** 2
+            + log_sigma_rec.reshape(*x.shape)
+        ).mean(axis=(1, 2, 3))
+    else:
+        likelihood = ((x_rec.reshape(*x.shape) - x) ** 2).mean(axis=(1, 2, 3))
+
+    likelihood = likelihood + alpha * kl
+
+    return likelihood.reshape(-1, 1)
+
+
 def inference_on_latent_grid(mu_decoder, var_decoder, z_mu, device):
 
     # Grid for probability map
@@ -218,7 +266,7 @@ def test_vae(config):
 
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    path = f"{config['dataset']}/vae_[use_var_dec={config['use_var_decoder']}]"
+    path = f"{config['dataset']}/vae_[use_var_dec={config['use_var_decoder']}]/{config['exp_name']}"
 
     latent_size = 2
     mu_encoder = get_encoder(config, latent_size).eval().to(device)
@@ -235,22 +283,11 @@ def test_vae(config):
     else:
         var_decoder = None
 
-    _, val_loader = get_data(config["dataset"], config["batch_size"])
-    _, ood_val_loader = get_data(config["ood_dataset"], config["batch_size"])
+    train_loader, val_loader = get_data(config["dataset"], config["batch_size"])
 
     # forward eval
     x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = inference_on_dataset(
         mu_encoder, var_encoder, mu_decoder, var_decoder, val_loader, device
-    )
-    (
-        ood_x,
-        ood_z_mu,
-        ood_z_sigma,
-        ood_x_rec_mu,
-        ood_x_rec_sigma,
-        ood_labels,
-    ) = inference_on_dataset(
-        mu_encoder, var_encoder, mu_decoder, var_decoder, ood_val_loader, device
     )
 
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = None, None, None, None
@@ -262,25 +299,82 @@ def test_vae(config):
     # create figures
     os.makedirs(f"../figures/{path}", exist_ok=True)
 
-    if config["dataset"] != "mnist":
+    if config["dataset"] == "swissrole":
         labels = None
 
     plot_latent_space(path, z_mu, labels, xg_mesh, yg_mesh, sigma_vector, n_points_axis)
 
-    if config["dataset"] == "mnist":
-        plot_mnist_reconstructions(path, x, x_rec_mu, x_rec_sigma)
-    if config["ood_dataset"] == "kmnist":
-        plot_mnist_reconstructions(
-            path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_"
+    plot_reconstructions(path, x, x_rec_mu, x_rec_sigma)
+    if config["ood"]:
+        _, ood_val_loader = get_data(config["ood_dataset"], config["batch_size"])
+
+        (
+            ood_x,
+            ood_z_mu,
+            ood_z_sigma,
+            ood_x_rec_mu,
+            ood_x_rec_sigma,
+            ood_labels,
+        ) = inference_on_dataset(
+            mu_encoder, var_encoder, mu_decoder, var_decoder, ood_val_loader, device
         )
 
-    plot_latent_space_ood(
-        path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
-    )
-    plot_ood_distributions(path, z_sigma, ood_z_sigma, x_rec_sigma, ood_x_rec_sigma)
+        plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
 
-    compute_and_plot_roc_curves(path, z_sigma, ood_z_sigma, pre_fix="latent_")
-    compute_and_plot_roc_curves(path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_")
+        likelihood_in = compute_likelihood(
+            x, x_rec_mu, z_mu, z_sigma, config["kl_weight"], x_rec_sigma
+        )
+        likelihood_out = compute_likelihood(
+            ood_x,
+            ood_x_rec_mu,
+            ood_z_mu,
+            ood_z_sigma,
+            config["kl_weight"],
+            ood_x_rec_sigma,
+        )
+
+        plot_latent_space_ood(
+            path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
+        )
+        plot_ood_distributions(path, likelihood_in, likelihood_out, "likelihood")
+        plot_ood_distributions(path, z_sigma, ood_z_sigma, "z")
+        plot_ood_distributions(path, x_rec_sigma, ood_x_rec_sigma, "x_rec")
+
+        compute_and_plot_roc_curves(
+            path, likelihood_in, likelihood_out, pre_fix="likelihood_"
+        )
+        compute_and_plot_roc_curves(path, z_sigma, ood_z_sigma, pre_fix="latent_")
+        compute_and_plot_roc_curves(
+            path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_"
+        )
+
+        (
+            train_x,
+            train_z_mu,
+            train_z_sigma,
+            train_x_rec_mu,
+            train_x_rec_sigma,
+            _,
+        ) = inference_on_dataset(
+            mu_encoder, var_encoder, mu_decoder, var_decoder, train_loader, device
+        )
+
+        train_likelihood = compute_likelihood(
+            train_x,
+            train_x_rec_mu,
+            train_z_mu,
+            train_z_sigma,
+            config["kl_weight"],
+            train_x_rec_sigma,
+        )
+
+        typicality_in = compute_typicality_score(train_likelihood, likelihood_in)
+        typicality_ood = compute_typicality_score(train_likelihood, likelihood_out)
+
+        plot_ood_distributions(path, typicality_in, typicality_ood, name="typicality")
+        compute_and_plot_roc_curves(
+            path, typicality_in, typicality_ood, pre_fix="typicality_"
+        )
 
 
 def train_vae(config):
@@ -292,7 +386,8 @@ def train_vae(config):
     model = LitVariationalAutoEncoder(config)
 
     # default logger used by trainer
-    logger = TensorBoardLogger(save_dir="../", version=1, name="lightning_logs")
+    name = f"vae/{config['dataset']}/{datetime.now().strftime('%b-%d-%Y-%H:%M:%S')}/{config['exp_name']}"
+    logger = TensorBoardLogger(save_dir="../lightning_log", name=name)
 
     # early stopping
     callbacks = [EarlyStopping(monitor="val_loss", patience=8)]
@@ -310,7 +405,7 @@ def train_vae(config):
     trainer.fit(model, train_loader, val_loader)
 
     # save weights
-    path = f"{config['dataset']}/vae_[use_var_dec={config['use_var_decoder']}]"
+    path = f"{config['dataset']}/vae_[use_var_dec={config['use_var_decoder']}]/{config['exp_name']}"
     os.makedirs(f"../weights/{path}", exist_ok=True)
     torch.save(model.mu_encoder.state_dict(), f"../weights/{path}/mu_encoder.pth")
     torch.save(model.var_encoder.state_dict(), f"../weights/{path}/var_encoder.pth")
@@ -335,6 +430,9 @@ if __name__ == "__main__":
 
     with open(args.config) as file:
         config = yaml.full_load(file)
+
+    print(json.dumps(config, indent=4))
+    config["exp_name"] = create_exp_name(config)
 
     # train or load auto encoder
     if config["train"]:

@@ -34,7 +34,7 @@ import numpy as np
 from hessian import layerwise as lw
 from hessian import backpack as bp
 from backpack import extend
-from utils import create_exp_name
+from utils import create_exp_name, compute_typicality_score
 from hessian import sampler
 
 samples = {
@@ -75,7 +75,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         decoder = get_decoder(config, latent_size)
 
         if config["pretrained"]:
-            path = f"../weights/{config['dataset']}/ae_[use_var_dec=False]"
+            path = f"../weights/{config['dataset']}/ae_[use_var_dec=False]/{config['exp_name']}"
             encoder.load_state_dict(torch.load(f"{path}/encoder.pth"))
             decoder.load_state_dict(torch.load(f"{path}/mu_decoder.pth"))
 
@@ -147,9 +147,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         x_recs = []
 
         # draw samples from the nn (sample nn)
-        samples = self.sampler.sample(
-            mu_q, sigma_q, n_samples=self.config["train_samples"]
-        )
+        samples = self.sampler.sample(mu_q, sigma_q, n_samples)
         for net_sample in samples:
 
             # replace the network parameters with the sampled parameters
@@ -167,14 +165,13 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             # compute mse for sample net
             mse_running_sum += F.mse_loss(x_rec.view(*x.shape), x) if self.loss_fn == "mse" else F.cross_entropy(x_rec, x.argmax(dim=2))
 
-
-            if not self.config["one_hessian_per_sampling"]:
+            if (not self.config["one_hessian_per_sampling"]) and train:
                 # compute hessian for sample net
                 start = time.time()
 
                 # H = J^T J
                 h_s = self.HessianCalculator.__call__(self.net, self.feature_maps, x)
-                h_s = self.sampler.scale(h_s, b, self.dataset_size)
+                h_s = self.sampler.scale(h_s, x.shape[0], self.dataset_size)
 
                 self.timings["compute_hessian"] += time.time() - start
 
@@ -182,14 +179,12 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
                 hessian.append(h_s)
             x_recs.append(x_rec)
 
-        if self.config["one_hessian_per_sampling"]:
-            stupid_sigma = torch.zeros_like(sigma_q)
-            stupid_samples = self.sampler.sample(
-                mu_q, stupid_sigma, n_samples=1
-            )
-            net_sample = stupid_samples[0]
-            # replace the network parameters with the sampled parameters
-            vector_to_parameters(net_sample, self.net.parameters())
+        # reset the network parameters with the mean parameter (MAP estimate parameters)
+        vector_to_parameters(mu_q, self.net.parameters())
+        mse = mse_running_sum / self.config["train_samples"]
+
+        if self.config["one_hessian_per_sampling"] and train:
+
             # reset or init
             self.feature_maps = []
             # predict with the sampled weights
@@ -199,22 +194,51 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
             # H = J^T J
             h_s = self.HessianCalculator.__call__(self.net, self.feature_maps, x)
-            h_s = self.sampler.scale(h_s, b, self.dataset_size)
+            hessian = [self.sampler.scale(h_s, x.shape[0], self.dataset_size)]
 
             self.timings["compute_hessian"] += time.time() - start
 
-            # append results
-            hessian.append(h_s)
+        return x_recs, hessian, mse
 
+    def configure_optimizers(self):
+        lr = (
+            float(self.config["learning_rate"])
+            if "learning_rate" in self.config
+            else 1e-3
+        )
+        optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, factor=0.5, patience=5
+        )
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": scheduler,
+            "monitor": "val_loss",
+        }
+
+    def training_step(self, train_batch, batch_idx):
+        self.timings["entire_training_step"] = time.time()
+
+        x, y = train_batch
+        b, c, h, w = x.shape
+
+        # compute kl
+        sigma_q = self.sampler.invert(self.hessian)
+        mu_q = parameters_to_vector(self.net.parameters()).unsqueeze(1)
+
+        kl = self.sampler.kl_div(mu_q, sigma_q)
+
+        x_recs, hessian, mse = self.forward(
+            x, mu_q, sigma_q, self.config["train_samples"]
+        )
 
         # note that + 1 is the identity which is the hessian of the KL term
-        new_hessian = self.sampler.aveage_hessian_samples(hessian, self.constant)
-        self.hessian = new_hessian + self.config["hessian_memory_factor"]*(self.hessian - new_hessian)
-        mse = mse_running_sum / self.config["train_samples"]
-        loss = self.constant * mse + self.kl_weight * kl.mean()
+        hessian = self.sampler.aveage_hessian_samples(hessian, self.constant)
+        self.hessian = (
+            1 - self.config["hessian_memory_factor"]
+        ) * hessian + self.config["hessian_memory_factor"] * self.hessian
 
-        # reset the network parameters with the mean parameter (MAP estimate parameters)
-        vector_to_parameters(mu_q, self.net.parameters())
+        loss = self.constant * mse + self.kl_weight * kl.mean()
 
         # log losses
         self.log("train_loss", loss)
@@ -228,9 +252,6 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         )
         self.log("time/compute_hessian", self.timings["compute_hessian"])
         self.log("time/forward_nn", self.timings["forward_nn"])
-
-        print(self.hessian[:5])
-        print('TIMES: forward', round(self.timings["forward_nn"],4), 'hessian', round(self.timings["compute_hessian"],4))
 
         self.timings["forward_nn"] = 0
         self.timings["compute_hessian"] = 0
@@ -318,19 +339,23 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
 
     hook = net[latent_dim - 1].register_forward_hook(fw_hook_get_latent)
 
-    x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse = [], [], [], [], [], [], []
+    x, z_mu, z_sigma, x_rec_mu = [], [], [], []
+    x_rec_sigma, labels, mse, likelihood = [], [], [], []
     for i, (xi, yi) in tqdm(enumerate(val_loader)):
         xi = xi.to(device)
         with torch.inference_mode():
 
             x_reci = []
             z_i = []
+            likelihood_running_sum = 0
 
             for net_sample in samples:
 
                 # replace the network parameters with the sampled parameters
                 vector_to_parameters(net_sample, net.parameters())
-                x_reci += [net(xi)]
+                x_rec = net(xi)
+                x_reci += [x_rec]
+                likelihood_running_sum += F.mse_loss(x_rec.view(*xi.shape), xi).cpu()
 
             x_reci = torch.cat(x_reci)
             z_i = torch.cat(z_i)
@@ -350,7 +375,7 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
             x += [xi.cpu()]
 
             mse += [F.mse_loss(x_reci_mu.view(*xi.shape), xi).cpu()]
-            # nll += []
+            likelihood += [likelihood_running_sum / len(samples)]
 
     x = torch.cat(x, dim=0).numpy()
     labels = torch.cat(labels, dim=0).numpy()
@@ -359,11 +384,12 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
     x_rec_mu = torch.stack(x_rec_mu).numpy()
     x_rec_sigma = torch.stack(x_rec_sigma).numpy()
     mse = torch.stack(mse).numpy()
+    likelihood = torch.stack(likelihood).numpy().reshape(-1, 1)
 
     # remove forward hook
     hook.remove()
 
-    return x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse
+    return x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse, likelihood
 
 
 def inference_on_latent_grid(net, samples, z_mu, latent_dim, dummy):
@@ -441,17 +467,24 @@ def test_lae(config, batch_size=1):
     sigma_q = hessian_approx.invert(h)
 
     # draw samples from the nn (sample nn)
-    mu_q = parameters_to_vector(net.parameters())
+    mu_q = parameters_to_vector(net.parameters()).unsqueeze(1)
     samples = hessian_approx.sample(mu_q, sigma_q, n_samples=config["test_samples"])
 
-    _, val_loader = get_data(
+    train_loader, val_loader = get_data(
         config["dataset"], batch_size, config["missing_data_imputation"]
     )
 
     # evaluate on dataset
-    x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse = inference_on_dataset(
-        net, samples, val_loader, latent_dim
-    )
+    (
+        x,
+        z_mu,
+        z_sigma,
+        x_rec_mu,
+        x_rec_sigma,
+        labels,
+        mse,
+        likelihood,
+    ) = inference_on_dataset(net, samples, val_loader, latent_dim)
 
     nll = (x_rec_mu - np.reshape(x, x_rec_mu.shape)) ** 2 / (
         2 * x_rec_sigma**2
@@ -497,19 +530,38 @@ def test_lae(config, batch_size=1):
             ood_x_rec_sigma,
             ood_labels,
             ood_mse,
+            ood_likelihood,
         ) = inference_on_dataset(net, samples, ood_val_loader, latent_dim)
 
         plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
 
-        plot_ood_distributions(path, None, None, x_rec_sigma, ood_x_rec_sigma)
+        plot_ood_distributions(path, x_rec_sigma, ood_x_rec_sigma, name="x_rec")
+        plot_ood_distributions(path, z_sigma, ood_z_sigma, name="z")
+        plot_ood_distributions(path, likelihood, ood_likelihood, name="likelihood")
 
         plot_latent_space_ood(
             path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
         )
 
+        compute_and_plot_roc_curves(
+            path, likelihood, ood_likelihood, pre_fix="likelihood_"
+        )
         compute_and_plot_roc_curves(path, z_sigma, ood_z_sigma, pre_fix="latent_")
         compute_and_plot_roc_curves(
             path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_"
+        )
+
+        # evaluate on train dataset
+        _, _, _, _, _, _, _, train_likelihood = inference_on_dataset(
+            net, samples, train_loader, latent_dim
+        )
+
+        typicality_in = compute_typicality_score(train_likelihood, likelihood)
+        typicality_ood = compute_typicality_score(train_likelihood, ood_likelihood)
+
+        plot_ood_distributions(path, typicality_in, typicality_ood, name="typicality")
+        compute_and_plot_roc_curves(
+            path, typicality_in, typicality_ood, pre_fix="typicality_"
         )
 
 

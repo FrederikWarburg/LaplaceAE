@@ -19,22 +19,22 @@ sys.path.append("../stochman")
 from stochman import nnj
 
 
-
 def create_dataset():
-
+    
     N = 1000
-    X = np.random.rand(N)
-    y = (
-        4.5 * np.cos(2 * np.pi * X + 1.5 * np.pi)
-        - 3 * np.sin(4.3 * np.pi * X + 0.3 * np.pi)
-        + 3.0 * X
-        - 7.5
-    )
-    X = torch.tensor(X).unsqueeze(1).type(torch.float)
-    y = torch.tensor(y).type(torch.float)
-    os.makedirs("../../figures/toy_regression_example", exist_ok=True)
-    plt.plot(X, y, ".")
-    plt.savefig("../../figures/toy_regression_example/data.png")
+    X = np.random.rand(N, 2)
+    y = np.zeros(N)
+    y[X[:,0]>0.5] = 1
+    y[X[:,1]>0.5] += 1
+
+    for i in np.unique(y):
+        plt.plot(X[y==i,0], X[y==i,1], ".")
+
+    X = torch.tensor(X).type(torch.float)
+    y = torch.tensor(y).type(torch.long)
+    os.makedirs("../../figures/toy_classification_example", exist_ok=True)
+
+    plt.savefig("../../figures/toy_classification_example/data.png")
     plt.cla()
     plt.close()
     print(X.shape, y.shape)
@@ -47,32 +47,32 @@ def create_dataset():
 def create_model():
 
     model = torch.nn.Sequential(
-        torch.nn.Linear(1, 10),
+        torch.nn.Linear(2, 10),
         torch.nn.Tanh(),
         torch.nn.Linear(10, 10),
         torch.nn.Tanh(),
-        torch.nn.Linear(10, 1),
+        torch.nn.Linear(10, 3),
     )
 
     return model
+
 
 def create_model_stochman():
 
     model = nnj.Sequential(
-        nnj.Linear(1, 10),
+        nnj.Linear(2, 10),
         nnj.Tanh(),
         nnj.Linear(10, 10),
         nnj.Tanh(),
-        nnj.Linear(10, 1),
+        nnj.Linear(10, 3),
     )
 
     return model
 
 
+def train_model(dataset, model, device):
 
-def train_model(dataset, model):
-
-    criterion = torch.nn.MSELoss()
+    criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
     for epoch in range(100):
@@ -91,17 +91,17 @@ def train_model(dataset, model):
         print(epoch, loss)
 
     # save weights
-    path = "../../weights/toy_regression_example/model.pth"
-    os.makedirs("../../weights/toy_regression_example", exist_ok=True)
+    path = "../../weights/toy_classification_example/model.pth"
+    os.makedirs("../../weights/toy_classification_example", exist_ok=True)
     torch.save(model.state_dict(), path)
 
 
-def eval_regression(dataset, model):
-    raise NotImplementedError
+def eval_regression(dataset, model, device):
 
     total, correct = 0, 0
     for X, y in dataset:
-
+        X = X.to(device)
+        y = y.to(device)
         yhat = model(X)
 
         _, predicted = torch.max(yhat.data, 1)
@@ -116,14 +116,14 @@ def eval_regression(dataset, model):
         plt.plot(X[~idx, 0], X[~idx, 1], "r.")
 
     print(correct / total)
-    plt.savefig("../../figures/toy_example/predictions.png")
+    plt.savefig("../../figures/toy_classification_example/predictions.png")
     plt.cla()
     plt.close()
 
 
 def load_model(model):
 
-    path = "../../weights/toy_regression_example/model.pth"
+    path = "../../weights/toy_classification_example/model.pth"
     statedict = torch.load(path)
     model.load_state_dict(statedict)
     return model
@@ -133,7 +133,7 @@ def compute_hessian_laplace_redux(model, dataloader):
 
     la = Laplace(
         model,
-        "regression",
+        "classification",
         hessian_structure="diag",
         subset_of_weights="all",
     )
@@ -143,13 +143,13 @@ def compute_hessian_laplace_redux(model, dataloader):
     la.optimize_prior_precision()
 
     # save weights
-    path = f"../../weights/toy_regression_example/"
+    path = f"../../weights/toy_classification_example/"
     os.makedirs(path, exist_ok=True)
     save_laplace(la, f"{path}/laplace.pkl")
 
     print(la.H)
     plt.plot(la.H.cpu().numpy(), "-o")
-    plt.savefig("../../figures/toy_regression_example/h_laplace_redux.png")
+    plt.savefig("../../figures/toy_classification_example/h_laplace_redux.png")
     plt.cla()
     plt.close()
 
@@ -157,16 +157,16 @@ def compute_hessian_laplace_redux(model, dataloader):
 
 
 def compute_hessian_ours(dataloader, net):
-    output_size = 1
+    output_size = 3
 
-    hessian_calculator = lw.MseHessianCalculator("exact")    
+    hessian_calculator = lw.CrossEntropyHessianCalculator("exact")    
     final_H = hessian_calculator.compute(dataloader, net, output_size)
 
     # compute mean over dataset
     print(final_H)
 
     plt.plot(final_H.cpu().numpy(), "-o")
-    plt.savefig("../../figures/toy_regression_example/h_ours.png")
+    plt.savefig("../../figures/toy_classification_example/h_ours.png")
     plt.cla()
     plt.close()
 
@@ -186,16 +186,17 @@ if __name__ == "__main__":
 
     # train or load auto encoder
     if train:
-        train_model(dataset, model)
+        train_model(dataset, model, device)
 
     model = load_model(model)
-    model.eval()
+    model.eval().to(device)
 
     model_stochman = load_model(model_stochman)
     model_stochman.eval().to(device)
-    # eval_classifier(dataset, model)
 
     assert torch.all(model[0].weight == model_stochman[0].weight)
+
+    # eval_classifier(dataset, model, device)
 
     if laplace_redux:
         H = compute_hessian_laplace_redux(model, dataset)
@@ -204,7 +205,7 @@ if __name__ == "__main__":
         H_our = compute_hessian_ours(dataset, model_stochman)
 
     plt.plot(H - H_our, "-o")
-    plt.savefig("../../figures/toy_regression_example/diff_hessains.png")
+    plt.savefig("../../figures/toy_classification_example/diff_hessains.png")
     plt.cla()
     plt.close()
     print(H - H_our)

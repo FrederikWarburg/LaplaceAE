@@ -391,8 +391,9 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
     return x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse, likelihood
 
 
-def inference_on_latent_grid(net, samples, z_mu, latent_dim, dummy):
-    device = net[-1].weight.device
+def inference_on_latent_grid(net_original, samples, z_mu, latent_dim, dummy):
+    device = net_original[-1].weight.device
+    dummy = dummy[0:1]
 
     # Grid for probability map
     n_points_axis = 50
@@ -410,8 +411,12 @@ def inference_on_latent_grid(net, samples, z_mu, latent_dim, dummy):
     for i, z_grid in enumerate(tqdm(z_grid_loader)):
 
         z_grid = z_grid[0].to(device)
-        replace_hook = net[latent_dim].register_forward_pre_hook(modify_input(z_grid))
 
+        assert dummy.shape[0] == z_grid.shape[0]
+
+        net = deepcopy(net_original)
+        replace_hook = net[latent_dim].register_forward_pre_hook(modify_input(z_grid))
+        
         with torch.inference_mode():
 
             pred = None
@@ -421,7 +426,7 @@ def inference_on_latent_grid(net, samples, z_mu, latent_dim, dummy):
 
                 # replace the network parameters with the sampled parameters
                 vector_to_parameters(net_sample, net.parameters())
-                x_rec = net(dummy)
+                x_rec = net(dummy).detach()
 
                 if pred is None:
                     pred = x_rec

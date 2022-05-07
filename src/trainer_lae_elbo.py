@@ -359,9 +359,9 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
 
             z_i = torch.cat(z_i)
 
-            # average over network samples
+            # ave[[rage over network samples
             x_reci_mu = x_reci.cpu() / len(samples)
-            x_reci_sigma = (x_reci_2.cpu() / len(samples) - x_reci_mu).sqrt()
+            x_reci_sigma = (x_reci_2.cpu() / len(samples) - x_reci_mu**2).sqrt()
             z_i_mu = torch.mean(z_i, dim=0)
             z_i_sigma = torch.var(z_i, dim=0).sqrt()
 

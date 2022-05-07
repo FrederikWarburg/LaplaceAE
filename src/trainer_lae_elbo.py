@@ -361,19 +361,19 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
 
             # average over network samples
             x_reci_mu = x_reci.cpu() / len(samples)
-            x_reci_sigma = (x_reci_2 / len(samples) - x_reci_mu).sqrt()
+            x_reci_sigma = (x_reci_2.cpu() / len(samples) - x_reci_mu).sqrt()
             z_i_mu = torch.mean(z_i, dim=0)
             z_i_sigma = torch.var(z_i, dim=0).sqrt()
 
             # append to list
-            x_rec_mu += [x_reci_mu.cpu()]
-            x_rec_sigma += [x_reci_sigma.cpu()]
+            x_rec_mu += [x_reci_mu]
+            x_rec_sigma += [x_reci_sigma]
             z_mu += [z_i_mu.cpu()]
             z_sigma += [z_i_sigma.cpu()]
             labels += [yi]
             x += [xi.cpu()]
 
-            mse += [F.mse_loss(x_reci_mu.view(*xi.shape), xi).cpu()]
+            mse += [F.mse_loss(x_reci_mu.view(*xi.shape), xi.cpu())]
             likelihood += [likelihood_running_sum / len(samples)]
 
     x = torch.cat(x, dim=0).numpy()

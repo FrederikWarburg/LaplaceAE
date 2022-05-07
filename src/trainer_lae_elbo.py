@@ -337,7 +337,8 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
         xi = xi.to(device)
         with torch.inference_mode():
 
-            x_reci = []
+            x_reci = None
+            x_reci_2 = None
             z_i = []
             likelihood_running_sum = 0
 
@@ -346,15 +347,21 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
                 # replace the network parameters with the sampled parameters
                 vector_to_parameters(net_sample, net.parameters())
                 x_rec = net(xi)
-                x_reci += [x_rec]
+
+                if x_reci is None:
+                    x_reci = x_rec
+                    x_reci_2 = x_rec**2
+                else:
+                    x_reci += x_rec
+                    x_reci_2 += x_rec**2
+
                 likelihood_running_sum += F.mse_loss(x_rec.view(*xi.shape), xi).cpu()
 
-            x_reci = torch.cat(x_reci)
             z_i = torch.cat(z_i)
 
             # average over network samples
-            x_reci_mu = torch.mean(x_reci, dim=0)
-            x_reci_sigma = torch.var(x_reci, dim=0).sqrt()
+            x_reci_mu = x_reci.cpu() / len(samples)
+            x_reci_sigma = (x_reci_2 / len(samples) - x_reci_mu).sqrt()
             z_i_mu = torch.mean(z_i, dim=0)
             z_i_sigma = torch.var(z_i, dim=0).sqrt()
 
@@ -407,20 +414,27 @@ def inference_on_latent_grid(net, samples, z_mu, latent_dim, dummy):
 
         with torch.inference_mode():
 
-            rec_grid_i = []
+            pred = None
+            pred2 = None
+
             for net_sample in samples:
 
                 # replace the network parameters with the sampled parameters
                 vector_to_parameters(net_sample, net.parameters())
-                rec_grid_i += [net(dummy)]
+                x_rec = net(dummy)
 
-            rec_grid_i = torch.stack(rec_grid_i)
+                if pred is None:
+                    pred = x_rec
+                    pred2 = x_rec**2
+                else:
+                    pred += x_rec
+                    pred2 += x_rec**2
 
-            mu_rec_grid = torch.mean(rec_grid_i, dim=0)
-            sigma_rec_grid = torch.var(rec_grid_i, dim=0).sqrt()
+            mu_rec_grid = pred.cpu() / len(samples)
+            sigma_rec_grid = (pred2.cpu() / len(samples) - mu_rec_grid**2).sqrt()
 
-        all_f_mu += [mu_rec_grid.cpu()]
-        all_f_sigma += [sigma_rec_grid.cpu()]
+        all_f_mu += [mu_rec_grid]
+        all_f_sigma += [sigma_rec_grid]
 
         replace_hook.remove()
 
@@ -534,7 +548,8 @@ def test_lae(config, batch_size=1):
         plot_latent_space_ood(
             path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
         )
-
+        save_metric(path, "likelihood_in", likelihood.mean())
+        save_metric(path, "likelihood_out", ood_likelihood.mean())
         compute_and_plot_roc_curves(
             path, likelihood, ood_likelihood, pre_fix="likelihood_"
         )

@@ -2,7 +2,7 @@
 exp_name : "mnist_model_selection/"
 
 # training
-train : True
+train : False
 kl_weight: 1e-6
 train_samples: 1
 

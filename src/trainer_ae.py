@@ -20,6 +20,7 @@ from visualizer import (
     plot_latent_space,
     plot_ood_distributions,
     compute_and_plot_roc_curves,
+    save_metric,
 )
 from datetime import datetime
 import json
@@ -269,7 +270,8 @@ def test_ae(config):
 
         likelihood_in = compute_likelihood(x, x_rec_mu, x_rec_log_sigma)
         likelihood_out = compute_likelihood(ood_x, ood_x_rec_mu, ood_x_rec_log_sigma)
-
+        save_metric(path, "likelihood_in", likelihood_in.mean())
+        save_metric(path, "likelihood_out", likelihood_out.mean())
         plot_ood_distributions(path, likelihood_in, likelihood_out, "likelihood")
 
         compute_and_plot_roc_curves(

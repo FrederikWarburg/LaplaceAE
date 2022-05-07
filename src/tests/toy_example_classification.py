@@ -157,10 +157,30 @@ def compute_hessian_laplace_redux(model, dataloader):
 
 
 def compute_hessian_ours(dataloader, net):
-    output_size = 3
-
+ 
     hessian_calculator = lw.CrossEntropyHessianCalculator("exact")    
-    final_H = hessian_calculator.compute(dataloader, net, output_size)
+ 
+    feature_maps = []
+
+    def fw_hook_get_latent(module, input, output):
+        feature_maps.append(output.detach())
+
+    for k in range(len(net)):
+        net[k].register_forward_hook(fw_hook_get_latent)
+
+    final_H = None
+    for x, y in dataloader:
+        x = x.to(device)
+        y = y.to(device)
+        feature_maps = []
+        yhat = net(x)
+
+        H = hessian_calculator.__call__(net, feature_maps, x)
+
+        if final_H is None:
+            final_H = H
+        else:
+            final_H += H
 
     # compute mean over dataset
     print(final_H)

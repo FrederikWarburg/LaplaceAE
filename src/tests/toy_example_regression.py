@@ -47,11 +47,11 @@ def create_dataset():
 def create_model():
 
     model = torch.nn.Sequential(
-        torch.nn.Linear(1, 10),
+        torch.nn.Linear(1, 10, bias=False),
         torch.nn.Tanh(),
-        torch.nn.Linear(10, 10),
+        torch.nn.Linear(10, 10, bias=False),
         torch.nn.Tanh(),
-        torch.nn.Linear(10, 1),
+        torch.nn.Linear(10, 1, bias=False),
     )
 
     return model
@@ -59,11 +59,11 @@ def create_model():
 def create_model_stochman():
 
     model = nnj.Sequential(
-        nnj.Linear(1, 10),
+        nnj.Linear(1, 10, bias=False),
         nnj.Tanh(),
-        nnj.Linear(10, 10),
+        nnj.Linear(10, 10, bias=False),
         nnj.Tanh(),
-        nnj.Linear(10, 1),
+        nnj.Linear(10, 1, bias=False),
     )
 
     return model
@@ -157,10 +157,29 @@ def compute_hessian_laplace_redux(model, dataloader):
 
 
 def compute_hessian_ours(dataloader, net):
-    output_size = 1
-
     hessian_calculator = lw.MseHessianCalculator("exact")    
-    final_H = hessian_calculator.compute(dataloader, net, output_size)
+
+    feature_maps = []
+
+    def fw_hook_get_latent(module, input, output):
+        feature_maps.append(output.detach())
+
+    for k in range(len(net)):
+        net[k].register_forward_hook(fw_hook_get_latent)
+
+    final_H = None
+    for x, y in dataloader:
+        x = x.to(device)
+        y = y.to(device)
+        feature_maps = []
+        yhat = net(x)
+
+        H = hessian_calculator.__call__(net, feature_maps, x)
+
+        if final_H is None:
+            final_H = H
+        else:
+            final_H += H
 
     # compute mean over dataset
     print(final_H)

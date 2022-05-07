@@ -38,6 +38,7 @@ from visualizer import (
     plot_latent_space_ood,
     plot_ood_distributions,
     compute_and_plot_roc_curves,
+    save_metric
 )
 
 
@@ -276,6 +277,8 @@ def test_lae_encoder_decoder(config):
         plot_ood_distributions(path, likelihood_in, likelihood_out, "likelihood")
         plot_ood_distributions(path, z_sigma, ood_z_sigma, "z")
         plot_ood_distributions(path, x_rec_sigma, ood_x_rec_sigma, "x_rec")
+        save_metric(path, "likelihood_in", likelihood_in.mean())
+        save_metric(path, "likelihood_out", likelihood_out.mean())
 
         compute_and_plot_roc_curves(
             path, likelihood_in, likelihood_out, pre_fix="likelihood_"

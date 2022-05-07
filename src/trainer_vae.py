@@ -21,6 +21,7 @@ from visualizer import (
     plot_latent_space_ood,
     plot_ood_distributions,
     compute_and_plot_roc_curves,
+    save_metric,
 )
 from datetime import datetime
 import json
@@ -381,6 +382,8 @@ def test_vae(config):
 
         typicality_in = compute_typicality_score(train_likelihood, likelihood_in)
         typicality_ood = compute_typicality_score(train_likelihood, likelihood_out)
+        save_metric(path, "likelihood_in", likelihood_in.mean())
+        save_metric(path, "likelihood_out", likelihood_out.mean())
 
         plot_ood_distributions(path, typicality_in, typicality_ood, name="typicality")
         compute_and_plot_roc_curves(

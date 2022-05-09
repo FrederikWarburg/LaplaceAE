@@ -14,7 +14,7 @@ test_samples: 1
 # data
 dataset : "protein"
 ood_dataset : "kmnist"
-batch_size: 6
+batch_size: 4
     
 # model
 pretrained : False

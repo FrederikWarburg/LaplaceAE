@@ -196,8 +196,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
     def training_step(self, train_batch, batch_idx):
         self.timings["entire_training_step"] = time.time()
-        import pdb
-        pdb.set_trace()
+
         x, y = train_batch
         #b, c, h, w = x.shape
 

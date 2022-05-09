@@ -91,6 +91,9 @@ def inference_on_dataset(la, encoder, val_loader, latent_dim, device):
 
 def inference_on_latent_grid(la_original, encoder, z_mu, latent_dim, device):
 
+    if z_mu.shape[1] != 2:
+        return None, None, None, None
+
     pred_type = "nn"
 
     # Grid for probability map
@@ -130,9 +133,7 @@ def inference_on_latent_grid(la_original, encoder, z_mu, latent_dim, device):
 
     # get diagonal elements
     idx = torch.arange(f_sigma.shape[1])
-    sigma_vector = (
-        f_sigma.mean(axis=1) if pred_type == "nn" else f_sigma[:, idx, idx].mean(axis=1)
-    )
+    sigma_vector = np.reshape(f_sigma, (n_points_axis*n_points_axis, -1)).mean(axis=1)
 
     return xg_mesh, yg_mesh, sigma_vector, n_points_axis
 
@@ -384,7 +385,7 @@ def fit_laplace_to_enc_and_dec(encoder, decoder, config):
         return nn.Sequential(net)
 
     net = get_model(encoder, decoder)
-
+    
     # subnetwork Laplace where we specify subnetwork by module names
     la = Laplace(
         net,
@@ -411,6 +412,10 @@ def train_lae(config):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     encoder = get_encoder(config, latent_size).eval().to(device)
     decoder = get_decoder(config, latent_size).eval().to(device)
+    
+    layers = list(decoder.decoder)
+    layers.append(torch.nn.Flatten())
+    decoder.decoder = torch.nn.Sequential(*layers)
 
     # load model weights
     path = f"../weights/{config['dataset']}/ae_[use_var_dec=False]/{config['exp_name']}"

@@ -161,6 +161,9 @@ def inference_on_dataset(net, val_loader, samples, device):
 
 def inference_on_latent_grid(net, z, samples, device):
 
+    if z.shape[1] != 2:
+        return None, None, None, None
+
     # Grid for probability map
     n_points_axis = 50
     xg_mesh, yg_mesh, z_grid_loader = generate_latent_grid(z, n_points_axis)
@@ -180,7 +183,7 @@ def inference_on_latent_grid(net, z, samples, device):
     f_sigma = torch.cat(all_f_sigma, dim=0)
 
     # get diagonal elements
-    sigma_vector = f_sigma.mean(axis=1)
+    sigma_vector = np.reshape(f_sigma, (n_points_axis*n_points_axis, -1)).mean(axis=1)
 
     return xg_mesh, yg_mesh, sigma_vector, n_points_axis
 

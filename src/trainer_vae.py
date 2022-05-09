@@ -34,11 +34,11 @@ class LitVariationalAutoEncoder(pl.LightningModule):
         super().__init__()
 
         # scaling of kl term
-        self.alpha = config["kl_weight"]
+        self.alpha = float(config["kl_weight"])
         self.use_var_decoder = config["use_var_decoder"]
         self.config = config
 
-        latent_size = 2
+        latent_size = config["latent_size"]
         self.mu_encoder = get_encoder(config, latent_size)
         self.var_encoder = get_encoder(config, latent_size)
 
@@ -92,7 +92,7 @@ class LitVariationalAutoEncoder(pl.LightningModule):
 
         # kl term
         kl = -0.5 * torch.sum(1 + torch.log(z_sigma**2) - z_mu**2 - z_sigma**2)
-
+        
         self.log("train_loss", rec + self.alpha * kl)
         self.log("reconstruciton_loss", rec)
         self.log("kl_loss", kl)
@@ -123,7 +123,7 @@ class LitVariationalAutoEncoder(pl.LightningModule):
 
         # kl term
         kl = -0.5 * torch.sum(1 + torch.log(z_sigma**2) - z_mu**2 - z_sigma**2)
-
+        
         self.log("val_loss", rec + self.alpha * kl)
         self.log("val_reconstruciton_loss", rec)
         self.log("val_kl_loss", kl)
@@ -244,6 +244,9 @@ def compute_likelihood(x, x_rec, z_mu, z_sigma, alpha, log_sigma_rec=None):
 
 def inference_on_latent_grid(mu_decoder, var_decoder, z_mu, device):
 
+    if z_mu.shape[1] != 2:
+        return None, None, None, None
+
     # Grid for probability map
     n_points_axis = 50
     xg_mesh, yg_mesh, z_grid_loader = generate_latent_grid(
@@ -269,7 +272,7 @@ def inference_on_latent_grid(mu_decoder, var_decoder, z_mu, device):
     f_sigma = torch.cat(all_f_sigma, dim=0)
 
     # get diagonal elements
-    sigma_vector = f_sigma.mean(axis=1)
+    sigma_vector = np.reshape(f_sigma, (n_points_axis*n_points_axis, -1)).mean(axis=1)
 
     return xg_mesh, yg_mesh, sigma_vector, n_points_axis
 
@@ -280,7 +283,7 @@ def test_vae(config):
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     path = f"{config['dataset']}/vae_[use_var_dec={config['use_var_decoder']}]/{config['exp_name']}"
 
-    latent_size = 2
+    latent_size = config["latent_size"]
     mu_encoder = get_encoder(config, latent_size).eval().to(device)
     var_encoder = get_encoder(config, latent_size).eval().to(device)
     mu_encoder.load_state_dict(torch.load(f"../weights/{path}/mu_encoder.pth"))
@@ -459,6 +462,7 @@ if __name__ == "__main__":
 
     print(json.dumps(config, indent=4))
     config["exp_name"] = create_exp_name(config)
+    config["kl_weight"] = float(config["kl_weight"])
 
     # train or load auto encoder
     if config["train"]:

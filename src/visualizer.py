@@ -121,6 +121,10 @@ def plot_latent_space_ood(
 
 def plot_ood_distributions(path, sigma, ood_sigma, name=""):
 
+    # flatten images
+    sigma = np.reshape(sigma, (sigma.shape[0], -1))
+    ood_sigma = np.reshape(ood_sigma, (ood_sigma.shape[0], -1))
+
     sigma = np.sum(sigma, axis=1)
     ood_sigma = np.sum(ood_sigma, axis=1)
     z = pd.DataFrame(
@@ -138,6 +142,9 @@ def plot_ood_distributions(path, sigma, ood_sigma, name=""):
 
 
 def compute_and_plot_roc_curves(path, id_sigma, ood_sigma, pre_fix=""):
+    
+    id_sigma = np.reshape(id_sigma, (id_sigma.shape[0], -1))
+    ood_sigma = np.reshape(ood_sigma, (ood_sigma.shape[0], -1))
 
     id_sigma, ood_sigma = id_sigma.sum(axis=1), ood_sigma.sum(axis=1)
 
@@ -193,10 +200,12 @@ def compute_and_plot_roc_curves(path, id_sigma, ood_sigma, pre_fix=""):
 
     for p in range(0, 100, 10):
         # if there is no difference in variance
-        if np.var(id_sigma) < 1e-6:
+        try:
+            metrics[f"fpr{p}"] = float(fpr[int(p / 100.0 * num_id)].numpy())
+        except:
             metrics[f"fpr{p}"] = "none"
         else:
-            metrics[f"fpr{p}"] = float(fpr[int(p / 100.0 * num_id)].numpy())
+            continue
 
     # compute auroc
     auroc = torchmetrics.AUROC(num_classes=1)

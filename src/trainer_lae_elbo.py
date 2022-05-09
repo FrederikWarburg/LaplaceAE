@@ -263,7 +263,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             self.logger.experiment.add_image(
                 "train/mean_recons_images", img_grid, self.current_epoch
             )
-            sigma = torch.stack(x_recs).var(dim=0).sqrt()
+            sigma = (torch.stack(x_recs).var(dim=0)+1e-5).sqrt()
             sigma = sigma.view(b, c, h, w)
 
             img_grid = torch.clamp(torchvision.utils.make_grid(sigma[:4]), 0, 1)
@@ -309,7 +309,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             self.logger.experiment.add_image(
                 "val/mean_recons_images", img_grid, self.current_epoch
             )
-            sigma = torch.stack(x_recs).var(dim=0).sqrt()
+            sigma = (torch.stack(x_recs).var(dim=0)+1e-5).sqrt()
             sigma = sigma.view(b, c, h, w)
 
             img_grid = torch.clamp(torchvision.utils.make_grid(sigma[:4]), 0, 1)
@@ -355,35 +355,35 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
                     x_reci += x_rec
                     x_reci_2 += x_rec**2
 
-                likelihood_running_sum += F.mse_loss(x_rec.view(*xi.shape), xi).cpu()
+                likelihood_running_sum += F.mse_loss(x_rec.view(*xi.shape), xi)
 
             z_i = torch.cat(z_i)
 
             # ave[[rage over network samples
-            x_reci_mu = x_reci.cpu() / len(samples)
-            x_reci_sigma = (x_reci_2.cpu() / len(samples) - x_reci_mu**2).sqrt()
+            x_reci_mu = x_reci / len(samples)
+            x_reci_sigma = (x_reci_2 / len(samples) - x_reci_mu**2 + 1e-5).sqrt()
             z_i_mu = torch.mean(z_i, dim=0)
-            z_i_sigma = torch.var(z_i, dim=0).sqrt()
-
+            z_i_sigma = (torch.var(z_i, dim=0) + 1e-5).sqrt()
+            
             # append to list
             x_rec_mu += [x_reci_mu]
             x_rec_sigma += [x_reci_sigma]
-            z_mu += [z_i_mu.cpu()]
-            z_sigma += [z_i_sigma.cpu()]
+            z_mu += [z_i_mu]
+            z_sigma += [z_i_sigma]
             labels += [yi]
-            x += [xi.cpu()]
+            x += [xi]
 
-            mse += [F.mse_loss(x_reci_mu.view(*xi.shape), xi.cpu())]
+            mse += [F.mse_loss(x_reci_mu.view(*xi.shape), xi)]
             likelihood += [likelihood_running_sum / len(samples)]
 
-    x = torch.cat(x, dim=0).numpy()
+    x = torch.cat(x, dim=0).cpu().numpy()
     labels = torch.cat(labels, dim=0).numpy()
-    z_mu = torch.stack(z_mu).numpy()
-    z_sigma = torch.stack(z_sigma).numpy()
-    x_rec_mu = torch.stack(x_rec_mu).numpy()
-    x_rec_sigma = torch.stack(x_rec_sigma).numpy()
-    mse = torch.stack(mse).numpy()
-    likelihood = torch.stack(likelihood).numpy().reshape(-1, 1)
+    z_mu = torch.stack(z_mu).cpu().numpy()
+    z_sigma = torch.stack(z_sigma).cpu().numpy()
+    x_rec_mu = torch.cat(x_rec_mu).cpu().numpy()
+    x_rec_sigma = torch.cat(x_rec_sigma).cpu().numpy()
+    mse = torch.stack(mse).cpu().numpy()
+    likelihood = torch.stack(likelihood).cpu().numpy().reshape(-1, 1)
 
     # remove forward hook
     hook.remove()
@@ -392,6 +392,10 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
 
 
 def inference_on_latent_grid(net_original, samples, z_mu, latent_dim, dummy):
+
+    if z_mu.shape[1] != 2:
+        return None, None, None, None
+
     device = net_original[-1].weight.device
     dummy = dummy[0:1]
 
@@ -436,18 +440,20 @@ def inference_on_latent_grid(net_original, samples, z_mu, latent_dim, dummy):
                     pred2 += x_rec**2
 
             mu_rec_grid = pred.cpu() / len(samples)
-            sigma_rec_grid = (pred2.cpu() / len(samples) - mu_rec_grid**2).sqrt()
+            sigma_rec_grid = (pred2.cpu() / len(samples) - mu_rec_grid**2)
+            if not torch.all(sigma_rec_grid > 0):
+                breakpoint()
+            sigma_rec_grid = sigma_rec_grid.sqrt()
 
         all_f_mu += [mu_rec_grid]
         all_f_sigma += [sigma_rec_grid]
-
         replace_hook.remove()
 
     f_mu = torch.stack(all_f_mu)
     f_sigma = torch.stack(all_f_sigma)
 
     # average over samples
-    sigma_vector = f_sigma.mean(axis=1)
+    sigma_vector = np.reshape(f_sigma, (n_points_axis*n_points_axis, -1)).mean(axis=1)
 
     # average over diagonal elements
     sigma_vector = sigma_vector.view(n_points_axis**2, -1).mean(axis=1)
@@ -459,7 +465,8 @@ def test_lae(config, batch_size=1):
 
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    path = f"{config['dataset']}/lae_elbo/{config['exp_name']}"
+    name = "lae_posthoc" if config['posthoc'] else "lae_elbo"
+    path = f"{config['dataset']}/{name}/{config['exp_name']}"
 
     latent_size = config["latent_size"]
     encoder = get_encoder(config, latent_size)
@@ -484,7 +491,7 @@ def test_lae(config, batch_size=1):
     train_loader, val_loader = get_data(
         config["dataset"], batch_size, config["missing_data_imputation"]
     )
-
+    
     # evaluate on dataset
     (
         x,
@@ -498,8 +505,8 @@ def test_lae(config, batch_size=1):
     ) = inference_on_dataset(net, samples, val_loader, latent_dim)
 
     nll = (x_rec_mu - np.reshape(x, x_rec_mu.shape)) ** 2 / (
-        2 * x_rec_sigma**2
-    ) + 1 / 2 * np.log(x_rec_sigma**2)
+        2 * x_rec_sigma**2 + 1e-6
+    ) + 1 / 2 * np.log(np.abs(x_rec_sigma + 1e-6)**2)
 
     # evaluate on latent grid representation
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
@@ -517,7 +524,7 @@ def test_lae(config, batch_size=1):
         labels = None
 
     save_metric(path, "nll", nll.sum())
-
+    
     plot_latent_space(path, z_mu, labels, xg_mesh, yg_mesh, sigma_vector, n_points_axis)
 
     plot_reconstructions(path, x, x_rec_mu, x_rec_sigma)
@@ -613,6 +620,62 @@ def train_lae(config):
         yaml.dump(config, outfile, default_flow_style=False)
 
 
+def fit_lae(config):
+
+    # data
+    train_loader, val_loader = get_data(
+        config["dataset"], batch_size=config["batch_size"]
+    )
+
+    device = (
+        "cuda:0" if torch.cuda.is_available() else "cpu"
+    )  # hola frederik :) can you fix this shit?
+
+    latent_size = config["latent_size"]
+    
+    encoder = get_encoder(config, latent_size)
+    decoder = get_decoder(config, latent_size)
+    
+    basename = "/".join(config['exp_name'].split("/")[:-1])
+    exp_name = "]_".join([n for n in config['exp_name'].split("/")[-1].split("]_") if "approximation" not in n and "backend" not in n])
+    exp_name = f"{basename}/{exp_name}"
+    
+    path = f"../weights/{config['dataset']}/ae_[use_var_dec=False]/{exp_name}"
+    encoder.load_state_dict(torch.load(f"{path}/encoder.pth"))
+    decoder.load_state_dict(torch.load(f"{path}/mu_decoder.pth"))
+
+    net = get_model(encoder, decoder)
+
+    hessian = None
+    feature_maps = []
+    def fw_hook_get_latent(module, input, output):
+        feature_maps.append(output.detach())
+
+    for k in range(len(net)):
+        net[k].register_forward_hook(fw_hook_get_latent)
+
+    HessianCalculator = lw.MseHessianCalculator(config["approximation"])
+    
+    for X, y in train_loader:
+        X = X.to(device)
+        x_rec = net(X)
+
+        h_s = HessianCalculator.__call__(net, feature_maps, x_rec)
+
+        if hessian is None:
+            hessian = h_s
+        else:
+            hessian += h_s
+
+    # save weights
+    path = f"{config['dataset']}/lae_posthoc/{config['exp_name']}"
+    os.makedirs(f"../weights/{path}", exist_ok=True)
+    torch.save(net.state_dict(), f"../weights/{path}/net.pth")
+    torch.save(hessian, f"../weights/{path}/hessian.pth")
+
+    with open(f"../weights/{path}/config.yaml", "w") as outfile:
+        yaml.dump(config, outfile, default_flow_style=False)
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -639,8 +702,16 @@ if __name__ == "__main__":
     print(json.dumps(config, indent=4))
     config["exp_name"] = create_exp_name(config)
 
+    # don't allow posthoc and train to be enabled on the same time.
+    if "posthoc" in config:
+        assert sum([config["train"], config["posthoc"]]) < 2
+
     # train or load auto encoder
     if config["train"]:
         train_lae(config)
+
+    # fit laplace approximation post-hoc
+    elif config["posthoc"]:
+        fit_lae(config)
 
     test_lae(config)

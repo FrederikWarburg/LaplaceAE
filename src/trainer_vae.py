@@ -21,6 +21,7 @@ from visualizer import (
     plot_latent_space_ood,
     plot_ood_distributions,
     compute_and_plot_roc_curves,
+    save_metric,
 )
 from datetime import datetime
 import json
@@ -370,6 +371,8 @@ def test_vae(config):
 
         typicality_in = compute_typicality_score(train_likelihood, likelihood_in)
         typicality_ood = compute_typicality_score(train_likelihood, likelihood_out)
+        save_metric(path, "likelihood_in", likelihood_in.mean())
+        save_metric(path, "likelihood_out", likelihood_out.mean())
 
         plot_ood_distributions(path, typicality_in, typicality_ood, name="typicality")
         compute_and_plot_roc_curves(
@@ -426,10 +429,19 @@ if __name__ == "__main__":
         default="../configs/vae.yaml",
         help="path to config you want to use",
     )
+    parser.add_argument(
+        "--version",
+        type=int,
+        default=-1,
+        help="version (-1 is ignored)",
+    )
     args = parser.parse_args()
 
     with open(args.config) as file:
         config = yaml.full_load(file)
+
+    if args.version >= 0:
+        config["exp_name"] = f"{config['exp_name']}/{args.version}"
 
     print(json.dumps(config, indent=4))
     config["exp_name"] = create_exp_name(config)

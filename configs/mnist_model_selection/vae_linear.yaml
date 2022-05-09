@@ -1,21 +1,21 @@
 # experiment name
-exp_name : "ood_experiment/"
+exp_name : "mnist_model_selection/"
 
 # training
 train : True
+kl_weight: 0.0001
 
 # test
-ood : True
-test_samples: 100
+ood : False
+missing_data_imputation : False
 
 # data
-dataset : "fashionmnist"
+dataset : "mnist"
 ood_dataset : "mnist"
 batch_size: 50
 
 # model
 pretrained : False
-use_var_decoder : False
 no_conv : True
 latent_size : 2
-dropout_rate: 0.2
+use_var_decoder : True

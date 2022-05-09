@@ -18,9 +18,10 @@ from copy import deepcopy
 
 import sys
 from torch import nn
+from copy import deepcopy
 
 import json
-from utils import create_exp_name
+from utils import create_exp_name, compute_typicality_score
 
 sys.path.append("../Laplace")
 from laplace.laplace import Laplace
@@ -37,6 +38,7 @@ from visualizer import (
     plot_latent_space_ood,
     plot_ood_distributions,
     compute_and_plot_roc_curves,
+    save_metric
 )
 
 
@@ -87,7 +89,7 @@ def inference_on_dataset(la, encoder, val_loader, latent_dim, device):
     return x, labels, z_mu, z_sigma, x_rec_mu, x_rec_sigma
 
 
-def inference_on_latent_grid(la, encoder, z_mu, latent_dim, device):
+def inference_on_latent_grid(la_original, encoder, z_mu, latent_dim, device):
 
     pred_type = "nn"
 
@@ -98,6 +100,7 @@ def inference_on_latent_grid(la, encoder, z_mu, latent_dim, device):
     all_f_mu, all_f_sigma = [], []
     for z_grid in tqdm(z_grid_loader):
 
+        la = deepcopy(la_original)
         z_grid = z_grid[0].to(device)
 
         with torch.inference_mode():
@@ -148,7 +151,7 @@ def test_lae_decoder(config):
 
     la = load_laplace(f"../weights/{path}/decoder.pkl")
 
-    _, ood_val_loader = get_data(config["ood_dataset"], config["batch_size"])
+    train_loader, val_loader = get_data(config["dataset"], config["batch_size"])
 
     x, labels, z, _, x_rec_mu, x_rec_sigma = inference_on_dataset(
         la, encoder, val_loader, latent_dim, device
@@ -172,19 +175,18 @@ def test_lae_decoder(config):
     plot_reconstructions(path, x, x_rec_mu, x_rec_sigma)
 
     if config["ood"]:
-        _, val_loader = get_data(config["dataset"], config["batch_size"])
 
-        (
-            ood_x,
-            ood_labels,
-            ood_z,
-            _,
-            ood_x_rec_mu,
-            ood_x_rec_sigma,
-        ) = inference_on_dataset(la, encoder, ood_val_loader, device)
+        _, ood_val_loader = get_data(config["ood_dataset"], config["batch_size"])
+
+        ood_x, _, _, _, ood_x_rec_mu, ood_x_rec_sigma = inference_on_dataset(
+            la, encoder, ood_val_loader, latent_dim, device
+        )
 
         if config["dataset"] in ("mnist", "fashionmnist"):
             ood_x = ood_x.reshape(-1, 1, 28, 28)
+
+        likelihood_in = compute_likelihood(x, x_rec_mu)
+        likelihood_out = compute_likelihood(ood_x, ood_x_rec_mu)
 
         plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
 
@@ -192,6 +194,24 @@ def test_lae_decoder(config):
 
         compute_and_plot_roc_curves(
             path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_"
+        )
+
+        compute_and_plot_roc_curves(
+            path, likelihood_in, likelihood_out, pre_fix="likelihood_"
+        )
+
+        train_x, _, _, _, train_x_rec_mu, _ = inference_on_dataset(
+            la, encoder, train_loader, latent_dim, device
+        )
+
+        train_likelihood = compute_likelihood(train_x, train_x_rec_mu)
+
+        typicality_in = compute_typicality_score(train_likelihood, likelihood_in)
+        typicality_ood = compute_typicality_score(train_likelihood, likelihood_out)
+
+        plot_ood_distributions(path, typicality_in, typicality_ood, name="typicality")
+        compute_and_plot_roc_curves(
+            path, typicality_in, typicality_ood, pre_fix="typicality_"
         )
 
 
@@ -208,14 +228,14 @@ def test_lae_encoder_decoder(config):
 
     la = load_laplace(f"../weights/{path}/ae.pkl")
 
-    _, val_loader = get_data(config["dataset"], config["batch_size"])
+    train_loader, val_loader = get_data(config["dataset"], config["batch_size"])
 
     x, labels, z_mu, z_sigma, x_rec_mu, x_rec_sigma = inference_on_dataset(
         la, None, val_loader, latent_dim, device
     )
 
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
-        la, None, z_mu, latent_dim, device
+        deepcopy(la), None, z_mu, latent_dim, device
     )
 
     # create figures
@@ -241,7 +261,7 @@ def test_lae_encoder_decoder(config):
             ood_z_sigma,
             ood_x_rec_mu,
             ood_x_rec_sigma,
-        ) = inference_on_dataset(la, None, ood_val_loader, device)
+        ) = inference_on_dataset(la, None, ood_val_loader, latent_dim, device)
 
         if config["dataset"] in ("mnist", "fashionmnist"):
             ood_x = ood_x.reshape(-1, 1, 28, 28)
@@ -257,6 +277,8 @@ def test_lae_encoder_decoder(config):
         plot_ood_distributions(path, likelihood_in, likelihood_out, "likelihood")
         plot_ood_distributions(path, z_sigma, ood_z_sigma, "z")
         plot_ood_distributions(path, x_rec_sigma, ood_x_rec_sigma, "x_rec")
+        save_metric(path, "likelihood_in", likelihood_in.mean())
+        save_metric(path, "likelihood_out", likelihood_out.mean())
 
         compute_and_plot_roc_curves(
             path, likelihood_in, likelihood_out, pre_fix="likelihood_"
@@ -266,10 +288,25 @@ def test_lae_encoder_decoder(config):
             path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_"
         )
 
+        train_x, _, _, _, train_x_rec_mu, _ = inference_on_dataset(
+            la, None, train_loader, latent_dim, device
+        )
+
+        if config["dataset"] in ("mnist", "fashionmnist"):
+            train_x = train_x.reshape(-1, 1, 28, 28)
+
+        train_likelihood = compute_likelihood(train_x, train_x_rec_mu)
+
+        typicality_in = compute_typicality_score(train_likelihood, likelihood_in)
+        typicality_ood = compute_typicality_score(train_likelihood, likelihood_out)
+
+        plot_ood_distributions(path, typicality_in, typicality_ood, name="typicality")
+        compute_and_plot_roc_curves(path, typicality_in, typicality_ood, pre_fix="typicality_")
+
 
 def compute_likelihood(x, x_rec):
-    likelihood = F.mse_loss(x_rec.view(*x.shape), x)
-    return likelihood
+    likelihood = ((x_rec.reshape(*x.shape) - x) ** 2).mean(axis=(1, 2, 3))
+    return likelihood.reshape(-1, 1)
 
 
 def test_lae(config):
@@ -395,10 +432,19 @@ if __name__ == "__main__":
         default="../configs/lae_post_hoc.yaml",
         help="path to config you want to use",
     )
+    parser.add_argument(
+        "--version",
+        type=int,
+        default=-1,
+        help="version (-1 is ignored)",
+    )
     args = parser.parse_args()
 
     with open(args.config) as file:
         config = yaml.full_load(file)
+
+    if args.version >= 0:
+        config["exp_name"] = f"{config['exp_name']}/{args.version}"
 
     print(json.dumps(config, indent=4))
     config["exp_name"] = create_exp_name(config)

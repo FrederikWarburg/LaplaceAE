@@ -57,29 +57,7 @@ class HessianCalculator:
         pass
 
     def compute(self, loader, model, output_size):
-        # keep track of running sum
-        H_running_sum = None
-        counter = 0
-
-        self.feature_maps = []
-
-        def fw_hook_get_latent(module, input, output):
-            self.feature_maps.append(output.detach())
-
-        for k in range(len(model)):
-            model[k].register_forward_hook(fw_hook_get_latent)
-
-        for batch in loader:
-            H = self.compute_batch(model, output_size, *batch)
-            if H_running_sum is None:
-                H_running_sum = H
-
-            if isinstance(H, list):
-                H_running_sum = [h_sum + h for h_sum, h in zip(H_running_sum, H)]
-            else:
-                H_running_sum += H
-
-        return H_running_sum
+        raise NotImplementedError
 
 
 class MseHessianCalculator(HessianCalculator):
@@ -87,14 +65,6 @@ class MseHessianCalculator(HessianCalculator):
         super(MseHessianCalculator, self).__init__()
 
         self.method = method  # block, exact, approx, mix
-
-    def compute_batch(self, net, output_size, x, *args, **kwargs):
-        x = x.to(self.device)
-
-        self.feature_maps = []
-        net(x)
-
-        return self.__call__(net, self.feature_maps, x)
 
     def __call__(self, net, feature_maps, x, *args, **kwargs):
         # print("call")
@@ -174,20 +144,15 @@ class CrossEntropyHessianCalculator(HessianCalculator):
 
         self.method = method  # block, exact, approx, mix
 
-    def compute_batch(self, net, output_size, x, *args, **kwargs):
-        x = x.to(self.device)
-
-        self.feature_maps = []
-        net(x)
-
-        return self.__call__(net, self.feature_maps, x)
-
     def __call__(self, net, feature_maps, x, *args, **kwargs):
         pred = feature_maps[-1]
-
+        
         if pred.ndim == 5:
             bs, classes, c, h, w = pred.shape
             output_size = c * h * w
+        elif pred.ndim == 2:
+            bs, output_size = pred.shape
+            classes = 1
         else:
             bs, classes, output_size = pred.shape
 
@@ -205,15 +170,15 @@ class CrossEntropyHessianCalculator(HessianCalculator):
             for b in range(bs):
                 blocks = torch.chunk(prob[b], output_size)
                 blocks = [
+                    torch.diag_embed(block, dim1=-1, dim2=-2) - 
                     torch.einsum("c,d->cd", block, block)
-                    - torch.diag_embed(block, dim1=-1, dim2=-2)
                     for block in blocks
                 ]
                 tmp[b] = torch.block_diag(*blocks)
 
         elif self.method in ("approx", "mix"):
             prob = prob.reshape(bs, classes * output_size)
-            tmp = prob**2 - prob
+            tmp = prob - prob**2
         else:
             raise NotImplementedError
 

@@ -21,6 +21,7 @@ from visualizer import (
     plot_latent_space_ood,
     plot_ood_distributions,
     compute_and_plot_roc_curves,
+    save_metric,
 )
 from datetime import datetime
 import json
@@ -305,6 +306,8 @@ def test_mcdropout_ae(config):
         plot_ood_distributions(path, likelihood_in, likelihood_out, "likelihood")
         plot_ood_distributions(path, z_sigma, ood_z_sigma, "z")
         plot_ood_distributions(path, x_rec_sigma, ood_x_rec_sigma, "x_rec")
+        save_metric(path, "likelihood_in", likelihood_in.mean())
+        save_metric(path, "likelihood_out", likelihood_out.mean())
 
         compute_and_plot_roc_curves(
             path, likelihood_in, likelihood_out, pre_fix="likelihood_"
@@ -384,10 +387,19 @@ if __name__ == "__main__":
         default="../configs/ae_dropout.yaml",
         help="path to config you want to use",
     )
+    parser.add_argument(
+        "--version",
+        type=int,
+        default=-1,
+        help="version (-1 is ignored)",
+    )
     args = parser.parse_args()
 
     with open(args.config) as file:
         config = yaml.full_load(file)
+
+    if args.version >= 0:
+        config["exp_name"] = f"{config['exp_name']}/{args.version}"
 
     print(json.dumps(config, indent=4))
     config["exp_name"] = create_exp_name(config)

@@ -21,9 +21,9 @@ class Encoder_protein(torch.nn.Module):
 
         self.encoder = nn.Sequential(
             Reshape(-1),
-            nn.Linear(SEQ_LEN*TOKEN_SIZE, 1000),
+            nn.Linear(SEQ_LEN*TOKEN_SIZE, 500),
             nn.Tanh(),
-            nn.Linear(1000, 500),
+            nn.Linear(500, 500),
             nn.Tanh(),
             nn.Linear(500, 250),
             nn.Tanh(),
@@ -45,9 +45,9 @@ class Decoder_protein(torch.nn.Module):
             nn.Tanh(),
             nn.Linear(250, 500),
             nn.Tanh(),
-            nn.Linear(500, 1000),
+            nn.Linear(500, 500),
             nn.Tanh(),
-            nn.Linear(1000, SEQ_LEN*TOKEN_SIZE),
+            nn.Linear(500, SEQ_LEN*TOKEN_SIZE),
             Reshape(TOKEN_SIZE, -1)
         )
 

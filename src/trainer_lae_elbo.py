@@ -69,6 +69,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         self.no_conv = config["no_conv"]
         self.loss_fn = config["loss_fn"]
         self.config = config
+        
 
         self.dataset_size = dataset_size
         encoder = get_encoder(config, latent_size)
@@ -98,7 +99,10 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             for k in range(len(self.net)):
                 self.net[k].register_forward_hook(fw_hook_get_latent)
 
-            self.HessianCalculator = lw.MseHessianCalculator(config["approximation"])
+            if self.loss_fn == "mse":
+                self.HessianCalculator = lw.MseHessianCalculator(config["approximation"])
+            else:
+                self.HessianCalculator = lw.CrossEntropyHessianCalculator(config["approximation"])
             self.sampler = samples[config["approximation"]]()
 
         self.hessian = self.sampler.init_hessian(self.dataset_size, self.net, device)
@@ -114,33 +118,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
         self.save_hyperparameters(config)
 
-    def forward(self, x):
-        out = self.net(x)
-        return out
-
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.5, patience=5
-        )
-        return {
-            "optimizer": optimizer,
-            "lr_scheduler": scheduler,
-            "monitor": "val_loss",
-        }
-
-    def training_step(self, train_batch, batch_idx):
-        self.timings["entire_training_step"] = time.time()
-
-        x, y = train_batch
-        #b, c, h, w = x.shape
-        b = x.shape[0]
-
-        # compute kl
-        sigma_q = self.sampler.invert(self.hessian)
-        mu_q = parameters_to_vector(self.net.parameters())
-
-        kl = self.sampler.kl_div(mu_q, sigma_q)
+    def forward(self, x, mu_q, sigma_q, n_samples, train=True):
 
         mse_running_sum = 0
         hessian = []
@@ -218,9 +196,10 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
     def training_step(self, train_batch, batch_idx):
         self.timings["entire_training_step"] = time.time()
-
+        import pdb
+        pdb.set_trace()
         x, y = train_batch
-        b, c, h, w = x.shape
+        #b, c, h, w = x.shape
 
         # compute kl
         sigma_q = self.sampler.invert(self.hessian)
@@ -257,22 +236,22 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         self.timings["compute_hessian"] = 0
 
         # log sigma_q
-        if self.config["approximation"] != "block":
-            if self.current_epoch > self.last_epoch_logged:
-                self.logger.experiment.add_histogram(
-                    "train/sigma_q", sigma_q, self.current_epoch
-                )
+        # if self.config["approximation"] != "block":
+        #     if self.current_epoch > self.last_epoch_logged:
+        #         self.logger.experiment.add_histogram(
+        #             "train/sigma_q", sigma_q, self.current_epoch
+        #         )
 
-            self.log("sigma_q/max", torch.max(sigma_q))
-            self.log("sigma_q/min", torch.min(sigma_q))
-            self.log("sigma_q/mean", torch.mean(sigma_q))
-            self.log("sigma_q/median", torch.median(sigma_q))
+        #     self.log("sigma_q/max", torch.max(sigma_q))
+        #     self.log("sigma_q/min", torch.min(sigma_q))
+        #     self.log("sigma_q/mean", torch.mean(sigma_q))
+        #     self.log("sigma_q/median", torch.median(sigma_q))
 
         # log images
         # if self.current_epoch > self.last_epoch_logged:
 
         #     x = x.view(b, c, h, w)
-        #     x_rec = x_rec.view(b, c, h, w)
+        #     x_rec = x_recs[0].view(b, c, h, w)
 
         #     img_grid = torch.clamp(torchvision.utils.make_grid(x[:4]), 0, 1)
         #     self.logger.experiment.add_image(
@@ -304,29 +283,48 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
     def validation_step(self, val_batch, batch_idx):
         x, y = val_batch
-        #b, c, h, w = x.shape
+        # b, c, h, w = x.shape
 
-        #if self.no_conv:
-        #    x = x.view(x.size(0), -1)
+        # compute kl
+        sigma_q = self.sampler.invert(self.hessian)
+        mu_q = parameters_to_vector(self.net.parameters()).unsqueeze(1)
 
-        x_rec = self.net(x)
-        loss = F.mse_loss(x_rec, x) if self.loss_fn == 'mse' else F.cross_entropy(x_rec, x.argmax(dim=2))
-        self.log("val_loss", loss)
+        x_recs, _, mse = self.forward(
+            x, mu_q, sigma_q, self.config["test_samples"], train=False
+        )
 
-#        if self.current_epoch > self.last_epoch_logged_val:
-#            x = x.view(b, c, h, w)
-#            x_rec = x_rec.view(b, c, h, w)
-#
-#            img_grid = torch.clamp(torchvision.utils.make_grid(x[:4]), 0, 1)
-#            self.logger.experiment.add_image(
-#                "val/orig_images", img_grid, self.current_epoch
-#            )
-#            img_grid = torch.clamp(torchvision.utils.make_grid(x_rec[:4]), 0, 1)
-#            self.logger.experiment.add_image(
-#                "val/recons_images", img_grid, self.current_epoch
-#            )
-#            self.logger.experiment.flush()
-#            self.last_epoch_logged_val += 1
+        self.log("val_loss", mse)
+
+        # if self.current_epoch > self.last_epoch_logged_val:
+        #     x = x.view(b, c, h, w)
+        #     x_rec = x_recs[0].view(b, c, h, w)
+
+        #     img_grid = torch.clamp(torchvision.utils.make_grid(x[:4]), 0, 1)
+        #     self.logger.experiment.add_image(
+        #         "val/orig_images", img_grid, self.current_epoch
+        #     )
+        #     img_grid = torch.clamp(torchvision.utils.make_grid(x_rec[:4]), 0, 1)
+        #     self.logger.experiment.add_image(
+        #         "val/recons_images", img_grid, self.current_epoch
+        #     )
+
+        #     mean = torch.stack(x_recs).mean(dim=0)
+        #     mean = mean.view(b, c, h, w)
+
+        #     img_grid = torch.clamp(torchvision.utils.make_grid(mean[:4]), 0, 1)
+        #     self.logger.experiment.add_image(
+        #         "val/mean_recons_images", img_grid, self.current_epoch
+        #     )
+        #     sigma = torch.stack(x_recs).var(dim=0).sqrt()
+        #     sigma = sigma.view(b, c, h, w)
+
+        #     img_grid = torch.clamp(torchvision.utils.make_grid(sigma[:4]), 0, 1)
+        #     self.logger.experiment.add_image(
+        #         "val/var_recons_images", img_grid, self.current_epoch
+        #     )
+
+        #     self.logger.experiment.flush()
+        #     self.last_epoch_logged_val += 1
 
 
 def inference_on_dataset(net, samples, val_loader, latent_dim):
@@ -576,8 +574,8 @@ def train_lae(config):
     model = LitLaplaceAutoEncoder(config, train_loader.dataset.__len__())
 
     # default logger used by trainer
-    #name = f"lae_elbo/{config['dataset']}/{datetime.now().strftime('%b-%d-%Y-%H:%M:%S')}/{config['exp_name']}"
-    logger = TensorBoardLogger(save_dir="..\lightning_log")#, name=name)
+    name = f"lae_elbo/{config['dataset']}/{datetime.now().strftime('%b-%d-%Y-%H:%M:%S')}/{config['exp_name']}"
+    logger = TensorBoardLogger(save_dir="../lightning_log", name=name)
 
     # monitor learning rate & early stopping
     callbacks = [
@@ -622,4 +620,4 @@ if __name__ == "__main__":
     if config["train"]:
         train_lae(config)
 
-    #test_lae(config)
+    test_lae(config)

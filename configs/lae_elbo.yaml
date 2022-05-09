@@ -9,12 +9,12 @@ train_samples: 1
 # test
 ood : False
 missing_data_imputation : False
-test_samples: 100
+test_samples: 1
 
 # data
 dataset : "protein"
 ood_dataset : "kmnist"
-batch_size: 24
+batch_size: 6
     
 # model
 pretrained : False
@@ -24,6 +24,6 @@ loss_fn : "categorical"
 
 # hessian
 backend : "layer" 
-approximation : "exact" #block, exact, approx, mix
+approximation : "approx" #block, exact, approx, mix
 hessian_memory_factor : 0
-one_hessian_per_sampling : False
+one_hessian_per_sampling : True

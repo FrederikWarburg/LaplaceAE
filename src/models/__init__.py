@@ -13,9 +13,9 @@ from src.models.protein_stochman import Encoder_stochman_protein, Decoder_stochm
 encoders = {
     "mnist": Encoder_mnist,
     "mnist_conv": Encoder_conv,
-    "fashionmnist": Encoder_fashionmnist,
-    "fashionmnist_conv": Encoder_fashionmnist_conv,
-    "cifar10_conv": Encoder_cifar10_conv,
+    #"fashionmnist": Encoder_fashionmnist,
+    #"fashionmnist_conv": Encoder_fashionmnist_conv,
+    #"cifar10_conv": Encoder_cifar10_conv,
     "svhn_conv": Encoder_svhn_conv,
     "protein": Encoder_protein,
 }
@@ -23,9 +23,9 @@ encoders = {
 stochman_encoders = {
     "mnist": Encoder_stochman_mnist,
     "mnist_conv": Encoder_stochman_conv,
-    "fashionmnist": Encoder_stochman_fashionmnist,
-    "fashionmnist_conv": Encoder_stochman_fashionmnist_conv,
-    "cifar10_conv": Encoder_cifar10_stochman_conv,
+    #"fashionmnist": Encoder_stochman_fashionmnist,
+    #"fashionmnist_conv": Encoder_stochman_fashionmnist_conv,
+    #"cifar10_conv": Encoder_cifar10_stochman_conv,
     "svhn_conv": Encoder_stochman_svhn_conv,
     "protein": Encoder_stochman_protein,
 }
@@ -33,9 +33,9 @@ stochman_encoders = {
 decoders = {
     "mnist": Decoder_mnist,
     "mnist_conv": Decoder_conv,
-    "fashionmnist": Decoder_fashionmnist,
-    "fashionmnist_conv": Decoder_fashionmnist_conv,
-    "cifar10_conv": Decoder_cifar10_conv,
+    #"fashionmnist": Decoder_fashionmnist,
+    #"fashionmnist_conv": Decoder_fashionmnist_conv,
+    #"cifar10_conv": Decoder_cifar10_conv,
     "svhn_conv": Decoder_svhn_conv,
     "protein": Decoder_protein,
 }
@@ -43,9 +43,9 @@ decoders = {
 stochman_decoders = {
     "mnist": Decoder_stochman_mnist,
     "mnist_conv": Decoder_stochman_conv,
-    "fashionmnist": Decoder_stochman_fashionmnist,
-    "fashionmnist_conv": Decoder_stochman_fashionmnist_conv,
-    "cifar10_conv": Decoder_cifar10_stochman_conv,
+    #"fashionmnist": Decoder_stochman_fashionmnist,
+    #"fashionmnist_conv": Decoder_stochman_fashionmnist_conv,
+    #"cifar10_conv": Decoder_cifar10_stochman_conv,
     "svhn_conv": Decoder_stochman_svhn_conv,
     "protein": Decoder_stochman_protein,
 }

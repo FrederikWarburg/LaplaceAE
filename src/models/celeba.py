@@ -25,12 +25,12 @@ class Encoder_celeba(torch.nn.Module):
 
         self.encoder = nn.Sequential(  # (bs, 3, 64, 64)
             nn.Conv2d(n_channels, encoder_hid, filter_size, padding=pad), nn.Tanh(),  # (bs, hid, 64, 64)
-            nn.Conv2d(encoder_hid, encoder_hid, filter_size, padding=pad, stride=2), nn.Tanh(),  # (bs, hid, 32, 32)
-            nn.Conv2d(encoder_hid, encoder_hid, filter_size, padding=pad, stride=2), nn.Tanh(),  # (bs, hid, 16, 16)
-            nn.Conv2d(encoder_hid, encoder_hid, filter_size, padding=pad, stride=2), nn.Tanh(),  # (bs, hid, 8, 8)
-            nn.Conv2d(encoder_hid, encoder_hid, filter_size, padding=pad, stride=2), nn.Tanh(),  # (bs, hid, 4, 4),
-            nn.Conv2d(encoder_hid, encoder_hid, filter_size, padding=pad, stride=2), nn.Tanh(),  # (bs, hid, 2, 2),
-            nn.Conv2d(encoder_hid, encoder_hid, filter_size, padding=pad, stride=2), nn.Tanh(),  # (bs, hid, 1, 1),
+            nn.Conv2d(encoder_hid, encoder_hid, filter_size, padding=pad), nn.MaxPool2d(2), nn.Tanh(),  # (bs, hid, 32, 32)
+            nn.Conv2d(encoder_hid, encoder_hid, filter_size, padding=pad), nn.MaxPool2d(2), nn.Tanh(),  # (bs, hid, 16, 16)
+            nn.Conv2d(encoder_hid, encoder_hid, filter_size, padding=pad), nn.MaxPool2d(2), nn.Tanh(),  # (bs, hid, 8, 8)
+            nn.Conv2d(encoder_hid, encoder_hid, filter_size, padding=pad), nn.MaxPool2d(2), nn.Tanh(),  # (bs, hid, 4, 4),
+            nn.Conv2d(encoder_hid, encoder_hid, filter_size, padding=pad), nn.MaxPool2d(2), nn.Tanh(),  # (bs, hid, 2, 2),
+            nn.Conv2d(encoder_hid, encoder_hid, filter_size, padding=pad), nn.MaxPool2d(2), nn.Tanh(),  # (bs, hid, 1, 1),
             nn.Flatten()  # (bs, hid*1*1)
         )
 

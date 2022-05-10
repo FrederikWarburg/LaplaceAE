@@ -5,7 +5,7 @@ exp_name : ""
 # training
 train : True
 kl_weight: 1e-6
-train_samples: 10
+train_samples: 1
 
 # test
 ood : False
@@ -21,10 +21,10 @@ batch_size: 24
 pretrained : False
 no_conv : True
 latent_size : 2
-loss_fn : "categorical"
+loss_fn : "mse"
 
 # hessian
 backend : "layer" 
-approximation : "approx"
-hessian_memory_factor : 0.9
+approximation : "exact" #block, exact, approx, mix
+hessian_memory_factor : 0
 one_hessian_per_sampling : False

@@ -165,35 +165,33 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
 
         import numpy as np
         from Bio import SeqIO
-        if "processed_data.pkl" not in os.listdir("../data/protein"):
-            seqs = []
-            labels = []
-            ids1, ids2 = [], []
-            for record in SeqIO.parse("../data/protein/PF00144_full.txt", "fasta"):
-                seqs.append(
-                    np.array([aa1_to_index[aa] for aa in str(record.seq).upper()])
-                )
-                ids1.append(re.findall(r".*\/", record.id)[0][:-1])
-            d1 = dict([(i, s) for i, s in zip(ids1, seqs)])
-            for record in SeqIO.parse(
-                "../data/protein/PF00144_full_length_sequences_labeled.fasta", "fasta"
-            ):
-                ids2.append(record.id)
-                labels.append(re.findall(r"\[.*\]", record.description)[0][1:-1])
-            d2 = dict([(i, l) for i, l in zip(ids2, labels)])
 
-            data = []
-            for key in d1.keys():
-                if key in d2.keys() and d2[key] in important_organisms:
-                    data.append([d1[key], d2[key]])
-            with open("../data/protein/processed_data.pkl", "wb") as file:
-                pkl.dump(data, file)
-        else:
-            with open("../data/protein/processed_data.pkl", "rb") as file:
-                data = pkl.load(file)
+        seqs = []
+        labels = []
+        ids1, ids2 = [], []
+        for record in SeqIO.parse("../data/protein/PF00144_full.txt", "fasta"):
+            seqs.append(
+                np.array([aa1_to_index[aa] for aa in str(record.seq).upper()])
+            )
+            ids1.append(re.findall(r".*\/", record.id)[0][:-1])
+        d1 = dict([(i, s) for i, s in zip(ids1, seqs)])
+        for record in SeqIO.parse(
+            "../data/protein/PF00144_full_length_sequences_labeled.fasta", "fasta"
+        ):
+            ids2.append(record.id)
+            labels.append(re.findall(r"\[.*\]", record.description)[0][1:-1])
+        d2 = dict([(i, l) for i, l in zip(ids2, labels)])
+
+        data = []
+        for key in d1.keys():
+            if key in d2.keys() and d2[key] in important_organisms:
+                data.append([d1[key], d2[key]])
+        with open("../data/protein/processed_data.pkl", "wb") as file:
+            pkl.dump(data, file)
 
         seqs = torch.tensor(np.array([d[0] for d in data]))
         labels = torch.tensor(np.array([important_organisms[d[1]] for d in data]))
+        seqs = torch.nn.functional.one_hot(seqs, )
 
         n_total = len(seqs)
         idx = np.random.permutation(n_total)

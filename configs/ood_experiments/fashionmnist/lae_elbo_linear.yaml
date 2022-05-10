@@ -1,5 +1,5 @@
 # experiment name
-exp_name : ""
+exp_name : "ood_experiment/"
 
 # training
 train : True
@@ -7,23 +7,22 @@ kl_weight: 1e-6
 train_samples: 1
 
 # test
-ood : False
+ood : True
 missing_data_imputation : False
-test_samples: 1
+test_samples: 100
 
 # data
-dataset : "protein"
-ood_dataset : "kmnist"
-batch_size: 4
-    
+dataset : "fashionmnist"
+ood_dataset : "mnist"
+batch_size: 50
+
 # model
 pretrained : False
 no_conv : True
 latent_size : 2
-loss_fn : "mse"
 
 # hessian
 backend : "layer" 
-approximation : "approx" #block, exact, approx, mix
+approximation : "exact" #block, exact, approx, mix
 hessian_memory_factor : 0
-one_hessian_per_sampling : True
+one_hessian_per_sampling : False

@@ -25,6 +25,7 @@ class DiagSampler(Sampler):
 
     def kl_div(self, mu_q, sigma_q):
         k = len(mu_q)
+
         return 0.5 * (
             torch.log(1.0 / sigma_q)
             - k

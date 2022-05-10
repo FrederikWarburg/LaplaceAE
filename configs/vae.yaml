@@ -1,6 +1,6 @@
 # training
 train : True
-kl_weight: 0.1
+kl_weight: 0.01
 
 # test
 ood: False

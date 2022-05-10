@@ -6,6 +6,7 @@ build/
 # folder specific
 data/
 lightning_logs/
+lightning_log/
 weights/
 
 *.png

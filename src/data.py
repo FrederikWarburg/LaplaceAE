@@ -145,19 +145,13 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         )
 
     elif name == "celeba":
-        dataset = CelebA(
-            "../data/", split="train", download=True, transform=transforms.ToTensor()
-        )
-        dataset_train, dataset_val = random_split(
-            dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
-        )
-        train_loader = DataLoader(
-            dataset_train, batch_size=batch_size, num_workers=8, pin_memory=True
-        )
-        val_loader = DataLoader(
-            dataset_val, batch_size=batch_size, num_workers=8, pin_memory=True
-        )
-
+        h = w = 64
+        tp = transforms.Compose([transforms.Resize((h, w)), transforms.ToTensor()])
+        train_set, val_set = [
+            CelebA("../data", split=split, download=True, transform=tp) for split in ["train", "valid"]
+        ]
+        train_loader = DataLoader(train_set, batch_size=batch_size, pin_memory=True)
+        val_loader = DataLoader(val_set, batch_size=batch_size, pin_memory=True)
     elif name == "cifar10":
         # image resolution 32 x 32
         dataset = CIFAR10(

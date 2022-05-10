@@ -1,0 +1,21 @@
+
+# experiment name
+exp_name : "mnist_model_selection/"
+
+# training
+train : True
+
+# test
+ood : False
+test_samples: 100
+
+# data
+dataset : "mnist"
+ood_dataset : "mnist"
+batch_size: 50
+
+# model
+pretrained : False
+no_conv : True
+latent_size : 2
+use_la_encoder : True # this will fit the laplace to both encoder and decoder

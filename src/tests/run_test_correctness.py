@@ -125,7 +125,7 @@ def run_layer(data_size, number_of_layers):
     model = get_model_stochman(number_of_layers, device)
 
     t0 = time.perf_counter()
-    Hs_layer = lw.MseHessianCalculator(False).compute(dataloader, model, data_size)
+    Hs_layer = lw.MseHessianCalculator("exact").compute(dataloader, model, data_size)
     elapsed_layer = time.perf_counter() - t0
 
     return Hs_layer.detach().cpu(), elapsed_layer

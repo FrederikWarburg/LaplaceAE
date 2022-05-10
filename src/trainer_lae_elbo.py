@@ -34,7 +34,7 @@ import numpy as np
 from hessian import layerwise as lw
 from hessian import backpack as bp
 from backpack import extend
-from utils import create_exp_name
+from utils import create_exp_name, compute_typicality_score
 from hessian import sampler
 
 samples = {
@@ -74,7 +74,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         decoder = get_decoder(config, latent_size)
 
         if config["pretrained"]:
-            path = f"../weights/{config['dataset']}/ae_[use_var_dec=False]"
+            path = f"../weights/{config['dataset']}/ae_[use_var_dec=False]/{config['exp_name']}"
             encoder.load_state_dict(torch.load(f"{path}/encoder.pth"))
             decoder.load_state_dict(torch.load(f"{path}/mu_decoder.pth"))
 
@@ -113,41 +113,14 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
         self.save_hyperparameters(config)
 
-    def forward(self, x):
-        out = self.net(x)
-        return out
-
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, factor=0.5, patience=5
-        )
-        return {
-            "optimizer": optimizer,
-            "lr_scheduler": scheduler,
-            "monitor": "val_loss",
-        }
-
-    def training_step(self, train_batch, batch_idx):
-        self.timings["entire_training_step"] = time.time()
-
-        x, y = train_batch
-        b, c, h, w = x.shape
-
-        # compute kl
-        sigma_q = self.sampler.invert(self.hessian)
-        mu_q = parameters_to_vector(self.net.parameters())
-
-        kl = self.sampler.kl_div(mu_q, sigma_q)
+    def forward(self, x, mu_q, sigma_q, n_samples, train=True):
 
         mse_running_sum = 0
         hessian = []
         x_recs = []
 
         # draw samples from the nn (sample nn)
-        samples = self.sampler.sample(
-            mu_q, sigma_q, n_samples=self.config["train_samples"]
-        )
+        samples = self.sampler.sample(mu_q, sigma_q, n_samples)
         for net_sample in samples:
 
             # replace the network parameters with the sampled parameters
@@ -165,14 +138,13 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             # compute mse for sample net
             mse_running_sum += F.mse_loss(x_rec.view(*x.shape), x)
 
-
-            if not self.config["one_hessian_per_sampling"]:
+            if (not self.config["one_hessian_per_sampling"]) and train:
                 # compute hessian for sample net
                 start = time.time()
 
                 # H = J^T J
                 h_s = self.HessianCalculator.__call__(self.net, self.feature_maps, x)
-                h_s = self.sampler.scale(h_s, b, self.dataset_size)
+                h_s = self.sampler.scale(h_s, x.shape[0], self.dataset_size)
 
                 self.timings["compute_hessian"] += time.time() - start
 
@@ -180,14 +152,12 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
                 hessian.append(h_s)
             x_recs.append(x_rec)
 
-        if self.config["one_hessian_per_sampling"]:
-            stupid_sigma = torch.zeros_like(sigma_q)
-            stupid_samples = self.sampler.sample(
-                mu_q, stupid_sigma, n_samples=1
-            )
-            net_sample = stupid_samples[0]
-            # replace the network parameters with the sampled parameters
-            vector_to_parameters(net_sample, self.net.parameters())
+        # reset the network parameters with the mean parameter (MAP estimate parameters)
+        vector_to_parameters(mu_q, self.net.parameters())
+        mse = mse_running_sum / self.config["train_samples"]
+
+        if self.config["one_hessian_per_sampling"] and train:
+
             # reset or init
             self.feature_maps = []
             # predict with the sampled weights
@@ -197,22 +167,51 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
 
             # H = J^T J
             h_s = self.HessianCalculator.__call__(self.net, self.feature_maps, x)
-            h_s = self.sampler.scale(h_s, b, self.dataset_size)
+            hessian = [self.sampler.scale(h_s, x.shape[0], self.dataset_size)]
 
             self.timings["compute_hessian"] += time.time() - start
 
-            # append results
-            hessian.append(h_s)
+        return x_recs, hessian, mse
 
+    def configure_optimizers(self):
+        lr = (
+            float(self.config["learning_rate"])
+            if "learning_rate" in self.config
+            else 1e-3
+        )
+        optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, factor=0.5, patience=5
+        )
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": scheduler,
+            "monitor": "val_loss",
+        }
+
+    def training_step(self, train_batch, batch_idx):
+        self.timings["entire_training_step"] = time.time()
+
+        x, y = train_batch
+        b, c, h, w = x.shape
+
+        # compute kl
+        sigma_q = self.sampler.invert(self.hessian)
+        mu_q = parameters_to_vector(self.net.parameters()).unsqueeze(1)
+
+        kl = self.sampler.kl_div(mu_q, sigma_q)
+
+        x_recs, hessian, mse = self.forward(
+            x, mu_q, sigma_q, self.config["train_samples"]
+        )
 
         # note that + 1 is the identity which is the hessian of the KL term
-        new_hessian = self.sampler.aveage_hessian_samples(hessian, self.constant)
-        self.hessian = new_hessian + self.config["hessian_memory_factor"]*(self.hessian - new_hessian)
-        mse = mse_running_sum / self.config["train_samples"]
-        loss = self.constant * mse + self.kl_weight * kl.mean()
+        hessian = self.sampler.aveage_hessian_samples(hessian, self.constant)
+        self.hessian = (
+            1 - self.config["hessian_memory_factor"]
+        ) * hessian + self.config["hessian_memory_factor"] * self.hessian
 
-        # reset the network parameters with the mean parameter (MAP estimate parameters)
-        vector_to_parameters(mu_q, self.net.parameters())
+        loss = self.constant * mse + self.kl_weight * kl.mean()
 
         # log losses
         self.log("train_loss", loss)
@@ -226,9 +225,6 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         )
         self.log("time/compute_hessian", self.timings["compute_hessian"])
         self.log("time/forward_nn", self.timings["forward_nn"])
-
-        print(self.hessian[:5])
-        print('TIMES: forward', round(self.timings["forward_nn"],4), 'hessian', round(self.timings["compute_hessian"],4))
 
         self.timings["forward_nn"] = 0
         self.timings["compute_hessian"] = 0
@@ -249,7 +245,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         if self.current_epoch > self.last_epoch_logged:
 
             x = x.view(b, c, h, w)
-            x_rec = x_rec.view(b, c, h, w)
+            x_rec = x_recs[0].view(b, c, h, w)
 
             img_grid = torch.clamp(torchvision.utils.make_grid(x[:4]), 0, 1)
             self.logger.experiment.add_image(
@@ -267,7 +263,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             self.logger.experiment.add_image(
                 "train/mean_recons_images", img_grid, self.current_epoch
             )
-            sigma = torch.stack(x_recs).var(dim=0).sqrt()
+            sigma = (torch.stack(x_recs).var(dim=0)+1e-5).sqrt()
             sigma = sigma.view(b, c, h, w)
 
             img_grid = torch.clamp(torchvision.utils.make_grid(sigma[:4]), 0, 1)
@@ -283,17 +279,19 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         x, y = val_batch
         b, c, h, w = x.shape
 
-        if self.no_conv:
-            x = x.view(x.size(0), -1)
+        # compute kl
+        sigma_q = self.sampler.invert(self.hessian)
+        mu_q = parameters_to_vector(self.net.parameters()).unsqueeze(1)
 
-        x_rec = self.net(x)
-        loss = F.mse_loss(x_rec, x)
+        x_recs, _, mse = self.forward(
+            x, mu_q, sigma_q, self.config["test_samples"], train=False
+        )
 
-        self.log("val_loss", loss)
+        self.log("val_loss", mse)
 
         if self.current_epoch > self.last_epoch_logged_val:
             x = x.view(b, c, h, w)
-            x_rec = x_rec.view(b, c, h, w)
+            x_rec = x_recs[0].view(b, c, h, w)
 
             img_grid = torch.clamp(torchvision.utils.make_grid(x[:4]), 0, 1)
             self.logger.experiment.add_image(
@@ -303,6 +301,22 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             self.logger.experiment.add_image(
                 "val/recons_images", img_grid, self.current_epoch
             )
+
+            mean = torch.stack(x_recs).mean(dim=0)
+            mean = mean.view(b, c, h, w)
+
+            img_grid = torch.clamp(torchvision.utils.make_grid(mean[:4]), 0, 1)
+            self.logger.experiment.add_image(
+                "val/mean_recons_images", img_grid, self.current_epoch
+            )
+            sigma = (torch.stack(x_recs).var(dim=0)+1e-5).sqrt()
+            sigma = sigma.view(b, c, h, w)
+
+            img_grid = torch.clamp(torchvision.utils.make_grid(sigma[:4]), 0, 1)
+            self.logger.experiment.add_image(
+                "val/var_recons_images", img_grid, self.current_epoch
+            )
+
             self.logger.experiment.flush()
             self.last_epoch_logged_val += 1
 
@@ -317,56 +331,73 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
 
     hook = net[latent_dim - 1].register_forward_hook(fw_hook_get_latent)
 
-    x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse = [], [], [], [], [], [], []
+    x, z_mu, z_sigma, x_rec_mu = [], [], [], []
+    x_rec_sigma, labels, mse, likelihood = [], [], [], []
     for i, (xi, yi) in tqdm(enumerate(val_loader)):
         xi = xi.to(device)
         with torch.inference_mode():
 
-            x_reci = []
+            x_reci = None
+            x_reci_2 = None
             z_i = []
+            likelihood_running_sum = 0
 
             for net_sample in samples:
 
                 # replace the network parameters with the sampled parameters
                 vector_to_parameters(net_sample, net.parameters())
-                x_reci += [net(xi)]
+                x_rec = net(xi)
 
-            x_reci = torch.cat(x_reci)
+                if x_reci is None:
+                    x_reci = x_rec
+                    x_reci_2 = x_rec**2
+                else:
+                    x_reci += x_rec
+                    x_reci_2 += x_rec**2
+
+                likelihood_running_sum += F.mse_loss(x_rec.view(*xi.shape), xi)
+
             z_i = torch.cat(z_i)
 
-            # average over network samples
-            x_reci_mu = torch.mean(x_reci, dim=0)
-            x_reci_sigma = torch.var(x_reci, dim=0).sqrt()
+            # ave[[rage over network samples
+            x_reci_mu = x_reci / len(samples)
+            x_reci_sigma = (x_reci_2 / len(samples) - x_reci_mu**2 + 1e-5).sqrt()
             z_i_mu = torch.mean(z_i, dim=0)
-            z_i_sigma = torch.var(z_i, dim=0).sqrt()
-
+            z_i_sigma = (torch.var(z_i, dim=0) + 1e-5).sqrt()
+            
             # append to list
-            x_rec_mu += [x_reci_mu.cpu()]
-            x_rec_sigma += [x_reci_sigma.cpu()]
-            z_mu += [z_i_mu.cpu()]
-            z_sigma += [z_i_sigma.cpu()]
+            x_rec_mu += [x_reci_mu]
+            x_rec_sigma += [x_reci_sigma]
+            z_mu += [z_i_mu]
+            z_sigma += [z_i_sigma]
             labels += [yi]
-            x += [xi.cpu()]
+            x += [xi]
 
-            mse += [F.mse_loss(x_reci_mu.view(*xi.shape), xi).cpu()]
-            # nll += []
+            mse += [F.mse_loss(x_reci_mu.view(*xi.shape), xi)]
+            likelihood += [likelihood_running_sum / len(samples)]
 
-    x = torch.cat(x, dim=0).numpy()
+    x = torch.cat(x, dim=0).cpu().numpy()
     labels = torch.cat(labels, dim=0).numpy()
-    z_mu = torch.stack(z_mu).numpy()
-    z_sigma = torch.stack(z_sigma).numpy()
-    x_rec_mu = torch.stack(x_rec_mu).numpy()
-    x_rec_sigma = torch.stack(x_rec_sigma).numpy()
-    mse = torch.stack(mse).numpy()
+    z_mu = torch.stack(z_mu).cpu().numpy()
+    z_sigma = torch.stack(z_sigma).cpu().numpy()
+    x_rec_mu = torch.cat(x_rec_mu).cpu().numpy()
+    x_rec_sigma = torch.cat(x_rec_sigma).cpu().numpy()
+    mse = torch.stack(mse).cpu().numpy()
+    likelihood = torch.stack(likelihood).cpu().numpy().reshape(-1, 1)
 
     # remove forward hook
     hook.remove()
 
-    return x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse
+    return x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse, likelihood
 
 
-def inference_on_latent_grid(net, samples, z_mu, latent_dim, dummy):
-    device = net[-1].weight.device
+def inference_on_latent_grid(net_original, samples, z_mu, latent_dim, dummy):
+
+    if z_mu.shape[1] != 2:
+        return None, None, None, None
+
+    device = net_original[-1].weight.device
+    dummy = dummy[0:1]
 
     # Grid for probability map
     n_points_axis = 50
@@ -384,32 +415,45 @@ def inference_on_latent_grid(net, samples, z_mu, latent_dim, dummy):
     for i, z_grid in enumerate(tqdm(z_grid_loader)):
 
         z_grid = z_grid[0].to(device)
-        replace_hook = net[latent_dim].register_forward_pre_hook(modify_input(z_grid))
 
+        assert dummy.shape[0] == z_grid.shape[0]
+
+        net = deepcopy(net_original)
+        replace_hook = net[latent_dim].register_forward_pre_hook(modify_input(z_grid))
+        
         with torch.inference_mode():
 
-            rec_grid_i = []
+            pred = None
+            pred2 = None
+
             for net_sample in samples:
 
                 # replace the network parameters with the sampled parameters
                 vector_to_parameters(net_sample, net.parameters())
-                rec_grid_i += [net(dummy)]
+                x_rec = net(dummy).detach()
 
-            rec_grid_i = torch.stack(rec_grid_i)
+                if pred is None:
+                    pred = x_rec
+                    pred2 = x_rec**2
+                else:
+                    pred += x_rec
+                    pred2 += x_rec**2
 
-            mu_rec_grid = torch.mean(rec_grid_i, dim=0)
-            sigma_rec_grid = torch.var(rec_grid_i, dim=0).sqrt()
+            mu_rec_grid = pred.cpu() / len(samples)
+            sigma_rec_grid = (pred2.cpu() / len(samples) - mu_rec_grid**2)
+            if not torch.all(sigma_rec_grid > 0):
+                breakpoint()
+            sigma_rec_grid = sigma_rec_grid.sqrt()
 
-        all_f_mu += [mu_rec_grid.cpu()]
-        all_f_sigma += [sigma_rec_grid.cpu()]
-
+        all_f_mu += [mu_rec_grid]
+        all_f_sigma += [sigma_rec_grid]
         replace_hook.remove()
 
     f_mu = torch.stack(all_f_mu)
     f_sigma = torch.stack(all_f_sigma)
 
     # average over samples
-    sigma_vector = f_sigma.mean(axis=1)
+    sigma_vector = np.reshape(f_sigma, (n_points_axis*n_points_axis, -1)).mean(axis=1)
 
     # average over diagonal elements
     sigma_vector = sigma_vector.view(n_points_axis**2, -1).mean(axis=1)
@@ -421,7 +465,8 @@ def test_lae(config, batch_size=1):
 
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    path = f"{config['dataset']}/lae_elbo/{config['exp_name']}"
+    name = "lae_posthoc" if config['posthoc'] else "lae_elbo"
+    path = f"{config['dataset']}/{name}/{config['exp_name']}"
 
     latent_size = config["latent_size"]
     encoder = get_encoder(config, latent_size)
@@ -440,21 +485,28 @@ def test_lae(config, batch_size=1):
     sigma_q = hessian_approx.invert(h)
 
     # draw samples from the nn (sample nn)
-    mu_q = parameters_to_vector(net.parameters())
+    mu_q = parameters_to_vector(net.parameters()).unsqueeze(1)
     samples = hessian_approx.sample(mu_q, sigma_q, n_samples=config["test_samples"])
 
-    _, val_loader = get_data(
+    train_loader, val_loader = get_data(
         config["dataset"], batch_size, config["missing_data_imputation"]
     )
-
+    
     # evaluate on dataset
-    x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels, mse = inference_on_dataset(
-        net, samples, val_loader, latent_dim
-    )
+    (
+        x,
+        z_mu,
+        z_sigma,
+        x_rec_mu,
+        x_rec_sigma,
+        labels,
+        mse,
+        likelihood,
+    ) = inference_on_dataset(net, samples, val_loader, latent_dim)
 
     nll = (x_rec_mu - np.reshape(x, x_rec_mu.shape)) ** 2 / (
-        2 * x_rec_sigma**2
-    ) + 1 / 2 * np.log(x_rec_sigma**2)
+        2 * x_rec_sigma**2 + 1e-6
+    ) + 1 / 2 * np.log(np.abs(x_rec_sigma + 1e-6)**2)
 
     # evaluate on latent grid representation
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
@@ -472,7 +524,7 @@ def test_lae(config, batch_size=1):
         labels = None
 
     save_metric(path, "nll", nll.sum())
-
+    
     plot_latent_space(path, z_mu, labels, xg_mesh, yg_mesh, sigma_vector, n_points_axis)
 
     plot_reconstructions(path, x, x_rec_mu, x_rec_sigma)
@@ -496,19 +548,39 @@ def test_lae(config, batch_size=1):
             ood_x_rec_sigma,
             ood_labels,
             ood_mse,
+            ood_likelihood,
         ) = inference_on_dataset(net, samples, ood_val_loader, latent_dim)
 
         plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
 
-        plot_ood_distributions(path, None, None, x_rec_sigma, ood_x_rec_sigma)
+        plot_ood_distributions(path, x_rec_sigma, ood_x_rec_sigma, name="x_rec")
+        plot_ood_distributions(path, z_sigma, ood_z_sigma, name="z")
+        plot_ood_distributions(path, likelihood, ood_likelihood, name="likelihood")
 
         plot_latent_space_ood(
             path, z_mu, z_sigma, labels, ood_z_mu, ood_z_sigma, ood_labels
         )
-
+        save_metric(path, "likelihood_in", likelihood.mean())
+        save_metric(path, "likelihood_out", ood_likelihood.mean())
+        compute_and_plot_roc_curves(
+            path, likelihood, ood_likelihood, pre_fix="likelihood_"
+        )
         compute_and_plot_roc_curves(path, z_sigma, ood_z_sigma, pre_fix="latent_")
         compute_and_plot_roc_curves(
             path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_"
+        )
+
+        # evaluate on train dataset
+        _, _, _, _, _, _, _, train_likelihood = inference_on_dataset(
+            net, samples, train_loader, latent_dim
+        )
+
+        typicality_in = compute_typicality_score(train_likelihood, likelihood)
+        typicality_ood = compute_typicality_score(train_likelihood, ood_likelihood)
+
+        plot_ood_distributions(path, typicality_in, typicality_ood, name="typicality")
+        compute_and_plot_roc_curves(
+            path, typicality_in, typicality_ood, pre_fix="typicality_"
         )
 
 
@@ -548,6 +620,62 @@ def train_lae(config):
         yaml.dump(config, outfile, default_flow_style=False)
 
 
+def fit_lae(config):
+
+    # data
+    train_loader, val_loader = get_data(
+        config["dataset"], batch_size=config["batch_size"]
+    )
+
+    device = (
+        "cuda:0" if torch.cuda.is_available() else "cpu"
+    )  # hola frederik :) can you fix this shit?
+
+    latent_size = config["latent_size"]
+    
+    encoder = get_encoder(config, latent_size)
+    decoder = get_decoder(config, latent_size)
+    
+    basename = "/".join(config['exp_name'].split("/")[:-1])
+    exp_name = "]_".join([n for n in config['exp_name'].split("/")[-1].split("]_") if "approximation" not in n and "backend" not in n])
+    exp_name = f"{basename}/{exp_name}"
+    
+    path = f"../weights/{config['dataset']}/ae_[use_var_dec=False]/{exp_name}"
+    encoder.load_state_dict(torch.load(f"{path}/encoder.pth"))
+    decoder.load_state_dict(torch.load(f"{path}/mu_decoder.pth"))
+
+    net = get_model(encoder, decoder)
+
+    hessian = None
+    feature_maps = []
+    def fw_hook_get_latent(module, input, output):
+        feature_maps.append(output.detach())
+
+    for k in range(len(net)):
+        net[k].register_forward_hook(fw_hook_get_latent)
+
+    HessianCalculator = lw.MseHessianCalculator(config["approximation"])
+    
+    for X, y in train_loader:
+        X = X.to(device)
+        x_rec = net(X)
+
+        h_s = HessianCalculator.__call__(net, feature_maps, x_rec)
+
+        if hessian is None:
+            hessian = h_s
+        else:
+            hessian += h_s
+
+    # save weights
+    path = f"{config['dataset']}/lae_posthoc/{config['exp_name']}"
+    os.makedirs(f"../weights/{path}", exist_ok=True)
+    torch.save(net.state_dict(), f"../weights/{path}/net.pth")
+    torch.save(hessian, f"../weights/{path}/hessian.pth")
+
+    with open(f"../weights/{path}/config.yaml", "w") as outfile:
+        yaml.dump(config, outfile, default_flow_style=False)
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -557,16 +685,33 @@ if __name__ == "__main__":
         default="../configs/lae_elbo.yaml",
         help="path to config you want to use",
     )
+    parser.add_argument(
+        "--version",
+        type=int,
+        default=-1,
+        help="version (-1 is ignored)",
+    )
     args = parser.parse_args()
 
     with open(args.config) as file:
         config = yaml.full_load(file)
 
+    if args.version >= 0:
+        config["exp_name"] = f"{config['exp_name']}/{args.version}"
+
     print(json.dumps(config, indent=4))
     config["exp_name"] = create_exp_name(config)
+
+    # don't allow posthoc and train to be enabled on the same time.
+    if "posthoc" in config:
+        assert sum([config["train"], config["posthoc"]]) < 2
 
     # train or load auto encoder
     if config["train"]:
         train_lae(config)
+
+    # fit laplace approximation post-hoc
+    elif config["posthoc"]:
+        fit_lae(config)
 
     test_lae(config)

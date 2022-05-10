@@ -6,6 +6,7 @@ import torch
 from torch.nn.utils import parameters_to_vector
 
 import sys
+import torch.nn.functional as F
 
 sys.path.append("../stochman")
 from stochman import nnj
@@ -56,29 +57,7 @@ class HessianCalculator:
         pass
 
     def compute(self, loader, model, output_size):
-        # keep track of running sum
-        H_running_sum = None
-        counter = 0
-
-        self.feature_maps = []
-
-        def fw_hook_get_latent(module, input, output):
-            self.feature_maps.append(output.detach())
-
-        for k in range(len(model)):
-            model[k].register_forward_hook(fw_hook_get_latent)
-
-        for batch in loader:
-            H = self.compute_batch(model, output_size, *batch)
-            if H_running_sum is None:
-                H_running_sum = H
-
-            if isinstance(H, list):
-                H_running_sum = [h_sum + h for h_sum, h in zip(H_running_sum, H)]
-            else:
-                H_running_sum += H
-
-        return H_running_sum
+        raise NotImplementedError
 
 
 class MseHessianCalculator(HessianCalculator):
@@ -86,14 +65,6 @@ class MseHessianCalculator(HessianCalculator):
         super(MseHessianCalculator, self).__init__()
 
         self.method = method  # block, exact, approx, mix
-
-    def compute_batch(self, net, output_size, x, *args, **kwargs):
-        x = x.to(self.device)
-
-        self.feature_maps = []
-        net(x)
-
-        return self.__call__(net, self.feature_maps, x)
 
     def __call__(self, net, feature_maps, x, *args, **kwargs):
         # print("call")
@@ -106,11 +77,13 @@ class MseHessianCalculator(HessianCalculator):
         feature_maps = [x] + feature_maps
 
         # if we use diagonal approximation or first layer is flatten
-        tmp = torch.ones(output_size, device=x.device)
+        tmp = torch.ones(output_size, device=x.device)  # [HWC]
         if self.method in ("block", "exact"):
             tmp = torch.diag_embed(tmp).expand(bs, -1, -1)
         elif self.method in ("approx", "mix"):
             tmp = tmp.expand(bs, -1)
+        else:
+            raise NotImplementedError
 
         curr_method = "approx" if self.method == "mix" else self.method
         diag_inp_m, diag_out_m, diag_inp_h, diag_out_h = diag_structure(curr_method)
@@ -156,6 +129,95 @@ class MseHessianCalculator(HessianCalculator):
 
         # print("wrt weight", t1)
         # print("wrt input", t2)
+
+        if self.method == "block":
+            H = [H_layer for H_layer in H]
+        else:
+            H = torch.cat(H, dim=0)
+
+        return H
+
+
+class CrossEntropyHessianCalculator(HessianCalculator):
+    def __init__(self, method):
+        super(CrossEntropyHessianCalculator, self).__init__()
+
+        self.method = method  # block, exact, approx, mix
+
+    def __call__(self, net, feature_maps, x, *args, **kwargs):
+        pred = feature_maps[-1]
+        
+        if pred.ndim == 5:
+            bs, classes, c, h, w = pred.shape
+            output_size = c * h * w
+        elif pred.ndim == 2:
+            bs, output_size = pred.shape
+            classes = 1
+        else:
+            bs, classes, output_size = pred.shape
+
+        feature_maps = [x] + feature_maps
+
+        # if we use diagonal approximation or first layer is flatten
+
+        prob = F.softmax(pred, dim=1)  # [B, Classes, C, H, W]
+        prob = prob.reshape(bs, classes, output_size)  # [B, Classes, CHW]
+        if self.method in ("block", "exact"):
+            prob = prob.movedim(1, 2).reshape(bs, classes * output_size)
+            tmp = torch.zeros(
+                bs, classes * output_size, classes * output_size, device=x.device
+            )
+            for b in range(bs):
+                blocks = torch.chunk(prob[b], output_size)
+                blocks = [
+                    torch.diag_embed(block, dim1=-1, dim2=-2) - 
+                    torch.einsum("c,d->cd", block, block)
+                    for block in blocks
+                ]
+                tmp[b] = torch.block_diag(*blocks)
+
+        elif self.method in ("approx", "mix"):
+            prob = prob.reshape(bs, classes * output_size)
+            tmp = prob - prob**2
+        else:
+            raise NotImplementedError
+
+        curr_method = "approx" if self.method == "mix" else self.method
+        diag_inp_m, diag_out_m, diag_inp_h, diag_out_h = diag_structure(curr_method)
+
+        H = []
+        with torch.no_grad():
+            for k in range(len(net) - 1, -1, -1):
+
+                if self.method == "mix":
+                    prev_layer = net[k - 1] if k > 0 else None
+                    next_layer = net[k + 1] if k < len(net) - 1 else None
+                    diag_inp_m, diag_out_m, diag_inp_h, diag_out_h = diag_structure(
+                        curr_method
+                    )
+                    curr_method, diag_out_h = swap_curr_method(
+                        curr_method, diag_out_h, prev_layer, net[k], next_layer
+                    )
+
+                # jacobian w.r.t weight
+                h_k = net[k]._jacobian_wrt_weight_sandwich(
+                    feature_maps[k],
+                    feature_maps[k + 1],
+                    tmp,
+                    diag_inp_m,
+                    diag_out_m,
+                )
+                if h_k is not None:
+                    H = [h_k.sum(dim=0)] + H
+
+                # jacobian w.r.t input
+                tmp = net[k]._jacobian_wrt_input_sandwich(
+                    feature_maps[k],
+                    feature_maps[k + 1],
+                    tmp,
+                    diag_inp_h,
+                    diag_out_h,
+                )
 
         if self.method == "block":
             H = [H_layer for H_layer in H]

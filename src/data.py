@@ -52,8 +52,12 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         train, val = random_split(
             dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
         )
-        train_loader = DataLoader(train, batch_size=batch_size, pin_memory=True)
-        val_loader = DataLoader(val, batch_size=batch_size, pin_memory=True)
+        train_loader = DataLoader(
+            train, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
+        val_loader = DataLoader(
+            val, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
 
     elif name == "kmnist":
         dataset = KMNIST(
@@ -62,8 +66,12 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         train, val = random_split(
             dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
         )
-        train_loader = DataLoader(train, batch_size=batch_size, pin_memory=True)
-        val_loader = DataLoader(val, batch_size=batch_size, pin_memory=True)
+        train_loader = DataLoader(
+            train, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
+        val_loader = DataLoader(
+            val, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
 
     elif name == "fashionmnist":
 
@@ -73,8 +81,12 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         train, val = random_split(
             dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
         )
-        train_loader = DataLoader(train, batch_size=batch_size, pin_memory=True)
-        val_loader = DataLoader(val, batch_size=batch_size, pin_memory=True)
+        train_loader = DataLoader(
+            train, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
+        val_loader = DataLoader(
+            val, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
 
     elif name == "svhn":
 
@@ -96,8 +108,12 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         train, val = random_split(
             dataset, [73257 - 5000, 5000], generator=torch.Generator().manual_seed(42)
         )
-        train_loader = DataLoader(train, batch_size=batch_size, pin_memory=True)
-        val_loader = DataLoader(val, batch_size=batch_size, pin_memory=True)
+        train_loader = DataLoader(
+            train, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
+        val_loader = DataLoader(
+            val, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
 
     elif name == "swissrole":
         N_train = 50000
@@ -116,10 +132,16 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         X_val, y_test = swiss_roll_2d(n_samples=N_val)
 
         train_loader = DataLoader(
-            TensorDataset(X_train, y_train), batch_size=batch_size, pin_memory=True
+            TensorDataset(X_train, y_train),
+            batch_size=batch_size,
+            num_workers=8,
+            pin_memory=True,
         )
         val_loader = DataLoader(
-            TensorDataset(X_val, y_test), batch_size=batch_size, pin_memory=True
+            TensorDataset(X_val, y_test),
+            batch_size=batch_size,
+            num_workers=8,
+            pin_memory=True,
         )
 
     elif name == "celeba":
@@ -130,7 +152,6 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         ]
         train_loader = DataLoader(train_set, batch_size=batch_size, pin_memory=True)
         val_loader = DataLoader(val_set, batch_size=batch_size, pin_memory=True)
-
     elif name == "cifar10":
         # image resolution 32 x 32
         dataset = CIFAR10(
@@ -139,14 +160,40 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         dataset_train, dataset_val = random_split(
             dataset, [45000, 5000], generator=torch.Generator().manual_seed(42)
         )
-        train_loader = DataLoader(dataset_train, batch_size=batch_size, pin_memory=True)
-        val_loader = DataLoader(dataset_val, batch_size=batch_size, pin_memory=True)
+        train_loader = DataLoader(
+            dataset_train, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
+        val_loader = DataLoader(
+            dataset_val, batch_size=batch_size, num_workers=8, pin_memory=True
+        )
 
     elif name == "protein":
         aa1_to_index = {
-            "A": 0, "C": 1, "D": 2, "E": 3, "F": 4, "G": 5, "H": 6, "I": 7, "K": 8,
-            "L": 9, "M": 10, "N": 11, "P": 12, "Q": 13, "R": 14, "S": 15, "T": 16,
-            "V": 17, "W": 18, "Y": 19, "X": 20, "Z": 21, "-": 22, ".": 22}
+            "A": 0,
+            "C": 1,
+            "D": 2,
+            "E": 3,
+            "F": 4,
+            "G": 5,
+            "H": 6,
+            "I": 7,
+            "K": 8,
+            "L": 9,
+            "M": 10,
+            "N": 11,
+            "P": 12,
+            "Q": 13,
+            "R": 14,
+            "S": 15,
+            "T": 16,
+            "V": 17,
+            "W": 18,
+            "Y": 19,
+            "X": 20,
+            "Z": 21,
+            "-": 22,
+            ".": 22,
+        }
         important_organisms = {
             "Acidobacteria": 0,
             "Actinobacteria": 1,
@@ -164,6 +211,7 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
 
         import numpy as np
         from Bio import SeqIO
+
         if "processed_data.pkl" not in os.listdir("../data/protein"):
             seqs = []
             labels = []
@@ -200,9 +248,7 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         train = torch.utils.data.TensorDataset(
             seqs[idx[:n_train]], labels[idx[:n_train]]
         )
-        val = torch.utils.data.TensorDataset(
-            seqs[idx[n_train:]], labels[idx[n_train:]]
-        )
+        val = torch.utils.data.TensorDataset(seqs[idx[n_train:]], labels[idx[n_train:]])
         train_loader = DataLoader(train, batch_size=batch_size, pin_memory=True)
         val_loader = DataLoader(val, batch_size=batch_size, pin_memory=True)
     else:
@@ -241,6 +287,6 @@ def generate_latent_grid(x, n_points_axis=50, batch_size=1):
 
 
 if __name__ == "__main__":
-    train_dl, val_dataloader = get_data('protein', 32)
+    train_dl, val_dataloader = get_data("protein", 32)
     batch = next(iter(train_dl))
     print(batch[0].shape, batch[1].shape)

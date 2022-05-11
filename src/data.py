@@ -2,8 +2,12 @@ from builtins import breakpoint
 import torch
 import numpy as np
 from torch.utils.data import DataLoader, TensorDataset, random_split
-from torchvision.datasets import MNIST, KMNIST, CelebA, CIFAR10, FashionMNIST, SVHN
+from torchvision.datasets import MNIST, KMNIST, CIFAR10, FashionMNIST, SVHN
 from torchvision import transforms
+import pandas as pd
+from functools import partial
+from PIL import Image
+import os
 
 
 def mask_regions(dataset):
@@ -37,6 +41,37 @@ def mask_half(dataset):
         n, h, w = dataset.data.shape
 
     idx = np.random.randint()
+
+
+class CelebA(torch.utils.data.Dataset):
+    def __init__(self, root, split = "train", transform = None):
+        breakpoint()
+        self.transform = transform
+        self.root = root
+        self.fn = partial(os.path.join, self.root, "celeba")
+        csv_file = pd.read_csv(self.fn("list_attr_celeba.txt"))
+        splits = pd.read_csv(self.fn("list_eval_partition.txt"))
+        breakpoint()
+        filename = csv_file["image_id"].values
+        target = csv_file.values[1:]
+        split_map = {"train":0,
+                    "val":1,
+                    "test":2,
+                    "all": None}
+
+        mask = splits["partition"] = split_map[split]
+        self.filename = filename[mask]
+        self.target = target[mask]
+
+    def __len__(self):
+        return len(self.target)
+
+    def __getitem__(self, idx):
+        image = Image.open(self.fn("img_aling_celeba", self.filename[idx]))
+        image = self.transform(image)
+        target = self.target[idx]
+
+        return image, target
 
 
 def get_data(name, batch_size=32, missing_data_imputation=False):
@@ -148,7 +183,7 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         h = w = 64
         tp = transforms.Compose([transforms.Resize((h, w)), transforms.ToTensor()])
         train_set, val_set = [
-            CelebA("../data", split=split, download=True, transform=tp) for split in ["train", "valid"]
+            CelebA("/scratch/frwa/celeba", split=split, transform=tp) for split in ["train", "test"]
         ]
         train_loader = DataLoader(train_set, batch_size=batch_size, pin_memory=True)
         val_loader = DataLoader(val_set, batch_size=batch_size, pin_memory=True)

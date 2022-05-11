@@ -142,9 +142,8 @@ def test_lae_decoder(config):
 
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    path = (
-        f"{config['dataset']}/lae_post_hoc_[use_la_encoder=False]/{config['exp_name']}"
-    )
+    approx = f"[approximation={config['approximation']}]_" if "approximation" in config else ""    
+    path = f"{config['dataset']}/lae_post_hoc_[use_la_encoder=False]/{approx}{config['exp_name']}"
 
     encoder = get_encoder(config, config["latent_size"]).eval().to(device)
     latent_dim = len(encoder.encoder) - 1
@@ -220,15 +219,14 @@ def test_lae_encoder_decoder(config):
 
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    path = (
-        f"{config['dataset']}/lae_post_hoc_[use_la_encoder=True]/{config['exp_name']}"
-    )
+    approx = f"[approximation={config['approximation']}]_" if "approximation" in config else ""    
+    path = f"{config['dataset']}/lae_post_hoc_[use_la_encoder=True]/{approx}{config['exp_name']}"
 
     encoder = get_encoder(config, config["latent_size"]).eval().to(device)
     latent_dim = len(encoder.encoder) - 1
 
     la = load_laplace(f"../weights/{path}/ae.pkl")
-
+    breakpoint()
     train_loader, val_loader = get_data(config["dataset"], config["batch_size"])
 
     x, labels, z_mu, z_sigma, x_rec_mu, x_rec_sigma = inference_on_dataset(
@@ -343,7 +341,7 @@ def fit_laplace_to_decoder(encoder, decoder, config):
     la = Laplace(
         decoder.decoder,
         "regression",
-        hessian_structure="diag",
+        hessian_structure=config["approximation"] if "approximation" in config else "diag",
         subset_of_weights="all",
     )
 
@@ -353,7 +351,8 @@ def fit_laplace_to_decoder(encoder, decoder, config):
     la.optimize_prior_precision()
 
     # save weights
-    path = f"../weights/{config['dataset']}/lae_post_hoc_[use_la_encoder=False]/{config['exp_name']}"
+    approx = f"[approximation={config['approximation']}]_" if "approximation" in config else ""    
+    path = f"../weights/{config['dataset']}/lae_post_hoc_[use_la_encoder=False]/{approx}{config['exp_name']}"
     os.makedirs(path, exist_ok=True)
     save_laplace(la, f"{path}/decoder.pkl")
 
@@ -390,7 +389,7 @@ def fit_laplace_to_enc_and_dec(encoder, decoder, config):
     la = Laplace(
         net,
         "regression",
-        hessian_structure="diag",
+        hessian_structure=config["approximation"] if "approximation" in config else "diag",
         subset_of_weights="all",
     )
 
@@ -400,7 +399,8 @@ def fit_laplace_to_enc_and_dec(encoder, decoder, config):
     la.optimize_prior_precision()
 
     # save weights
-    path = f"../weights/{config['dataset']}/lae_post_hoc_[use_la_encoder=True]/{config['exp_name']}"
+    approx = f"[approximation={config['approximation']}]_" if "approximation" in config else ""    
+    path = f"../weights/{config['dataset']}/lae_post_hoc_[use_la_encoder=True]/{approx}{config['exp_name']}"
     os.makedirs(path, exist_ok=True)
     save_laplace(la, f"{path}/ae.pkl")
 
@@ -452,11 +452,10 @@ if __name__ == "__main__":
         config["exp_name"] = f"{config['exp_name']}/{args.version}"
 
     print(json.dumps(config, indent=4))
-    config["exp_name"] = create_exp_name(config)
+    config["exp_name"] = create_exp_name(config, exclude=["approximation"])
 
     # train or load laplace auto encoder
     if config["train"]:
-        train_lae(config)
         print("==> train lae")
         train_lae(config)
 

@@ -62,8 +62,8 @@ def get_data(channels, data_size):
     return dataloader
 
 
-def run_la(data_size, number_of_layers):
-    channels = 10
+def run_la(data_size, number_of_layers, hessian_structure):
+    channels = 3
     torch.manual_seed(42)
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
@@ -71,7 +71,6 @@ def run_la(data_size, number_of_layers):
 
     model = get_model(channels, number_of_layers, device)
 
-    hessian_structure = "diag"
     la = Laplace(
         model,
         "regression",
@@ -86,7 +85,7 @@ def run_la(data_size, number_of_layers):
 
 
 def run_row(data_size, number_of_layers):
-    channels = 10
+    channels = 3
 
     torch.manual_seed(42)
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -106,7 +105,7 @@ def run_row(data_size, number_of_layers):
 
 def run_layer(data_size, number_of_layers, diag_tmp):
 
-    channels = 10
+    channels = 3
 
     torch.manual_seed(42)
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -127,7 +126,7 @@ def run_layer(data_size, number_of_layers, diag_tmp):
 
 
 def run_backpack(data_size, number_of_layers):
-    channels = 10
+    channels = 3
 
     torch.manual_seed(42)
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -187,8 +186,17 @@ if __name__ == "__main__":
     elif args.backend == "row":
         H, t = run_row(args.data_size, args.number_of_layers)
 
-    elif args.backend == "la":
-        H, t = run_la(args.data_size, args.number_of_layers)
+    elif args.backend == "la_diag":
+        H, t = run_la(args.data_size, args.number_of_layers, "diag")
+
+    elif args.backend == "la_kron":
+        H, t = run_la(args.data_size, args.number_of_layers, "kron")
+
+    elif args.backend == "la_lowrank":
+        H, t = run_la(args.data_size, args.number_of_layers, "lowrank")
+
+    elif args.backend == "la_full":
+        H, t = run_la(args.data_size, args.number_of_layers, "full")
 
     elif args.backend == "backpack":
         H, t = run_backpack(args.data_size, args.number_of_layers)

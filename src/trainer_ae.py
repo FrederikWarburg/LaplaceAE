@@ -222,7 +222,7 @@ def test_ae(config):
 
     mu_decoder = get_decoder(config, latent_size).eval().to(device)
     mu_decoder.load_state_dict(torch.load(f"../weights/{path}/mu_decoder.pth"))
-
+    breakpoint()
     if config["use_var_decoder"]:
         var_decoder = get_decoder(config, latent_size).eval().to(device)
         var_decoder.load_state_dict(torch.load(f"../weights/{path}/var_decoder.pth"))

@@ -1,0 +1,21 @@
+# experiment name
+exp_name : "ood_experiment/"
+
+# training
+train : True
+learning_rate : 1e-4
+
+# test
+test_samples: 100
+ood : True
+
+# data
+dataset : "cifar10"
+ood_dataset : "svhn"
+batch_size : 50
+    
+# model
+pretrained : False
+no_conv : False
+latent_size : 512
+use_la_encoder : False # this will fit the laplace to both encoder and decoder

@@ -20,11 +20,11 @@ class DiagLaplace(BaseLaplace):
         samples = samples * posterior_scale.reshape(1, n_params)
         return parameters.reshape(1, n_params) + samples
 
-    def posterior_scale(self, hessian):
-        prior_precision_diag = 1
-        posterior_precision = hessian + prior_precision_diag
+    def posterior_scale(self, hessian, scale = 1, prior_prec = 1):
+        
+        posterior_precision = hessian * scale + prior_prec
         return 1.0 / (posterior_precision.sqrt() + 1e-6)
-
+    
     def init_hessian(self, data_size, net, device):
 
         hessian = data_size * torch.ones_like(
@@ -64,9 +64,9 @@ class BlockLaplace(BaseLaplace):
         param_samples = torch.cat(param_samples, dim=1).to(parameters.device)
         return param_samples
 
-    def posterior_scale(self, hessian):
-        prior_precision_diag = 1
-        posterior_precision = [h + torch.diag_embed(prior_precision_diag * torch.ones(h.shape[0])) for h in hessian]
+    def posterior_scale(self, hessian, scale = 1, prior_prec = 1):
+        
+        posterior_precision = [h * scale + torch.diag_embed(prior_prec * torch.ones(h.shape[0])) for h in hessian]
         posterior_scale = [torch.cholesky_inverse(layer_post_prec) for layer_post_prec in posterior_precision]
         return posterior_scale
 

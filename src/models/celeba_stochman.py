@@ -4,7 +4,7 @@ import sys
 sys.path.append("../../stochman")
 from stochman import nnj as nn
 
-class Encoder_celeba(torch.nn.Module):
+class Encoder_stochman_celeba(torch.nn.Module):
     def __init__(self, latent_size, in_channels):
         super().__init__()
         self.latent_size = latent_size
@@ -30,7 +30,7 @@ class Encoder_celeba(torch.nn.Module):
         return self.encoder(x)
 
 
-class Decoder_celeba(torch.nn.Module):
+class Decoder_stochman_celeba(torch.nn.Module):
     def __init__(self, latent_size, out_channels):
         super().__init__()
         self.latent_size = latent_size

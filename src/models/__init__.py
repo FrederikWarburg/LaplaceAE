@@ -24,6 +24,8 @@ from models.fashionmnist_stochman import (
     Decoder_stochman_fashionmnist,
     Decoder_stochman_fashionmnist_conv,
 )
+from models.celeba import Encoder_celeba, Decoder_celeba
+from models.celeba_stochman import Encoder_stochman_celeba, Decoder_stochman_celeba
 
 encoders = {
     "mnist": Encoder_mnist,
@@ -32,6 +34,7 @@ encoders = {
     "fashionmnist_conv": Encoder_fashionmnist_conv,
     "cifar10_conv": Encoder_cifar10_conv,
     "svhn_conv": Encoder_svhn_conv,
+    "celeba_conv" : Encoder_celeba
 }
 
 stochman_encoders = {
@@ -41,6 +44,7 @@ stochman_encoders = {
     "fashionmnist_conv": Encoder_stochman_fashionmnist_conv,
     "cifar10_conv": Encoder_cifar10_stochman_conv,
     "svhn_conv": Encoder_stochman_svhn_conv,
+    "celeba_conv" : Encoder_stochman_celeba,
 }
 
 decoders = {
@@ -50,6 +54,7 @@ decoders = {
     "fashionmnist_conv": Decoder_fashionmnist_conv,
     "cifar10_conv": Decoder_cifar10_conv,
     "svhn_conv": Decoder_svhn_conv,
+    "celeba_conv" : Decoder_celeba,
 }
 
 stochman_decoders = {
@@ -59,6 +64,7 @@ stochman_decoders = {
     "fashionmnist_conv": Decoder_stochman_fashionmnist_conv,
     "cifar10_conv": Decoder_cifar10_stochman_conv,
     "svhn_conv": Decoder_stochman_svhn_conv,
+    "celeba_conv" : Decoder_stochman_celeba,
 }
 
 

@@ -1,4 +1,5 @@
 from builtins import breakpoint
+from fileinput import filename
 import torch
 import numpy as np
 from torch.utils.data import DataLoader, TensorDataset, random_split
@@ -45,21 +46,21 @@ def mask_half(dataset):
 
 class CelebA(torch.utils.data.Dataset):
     def __init__(self, root, split = "train", transform = None):
-        breakpoint()
+        
         self.transform = transform
         self.root = root
         self.fn = partial(os.path.join, self.root, "celeba")
-        csv_file = pd.read_csv(self.fn("list_attr_celeba.txt"))
-        splits = pd.read_csv(self.fn("list_eval_partition.txt"))
-        breakpoint()
+        csv_file = pd.read_csv(self.fn("list_attr_celeba.txt"), index_col=0)
+        splits = pd.read_csv(self.fn("list_eval_partition.txt"), delimiter=" ", header=None).values[:, 1].astype(int)
+        
         filename = csv_file["image_id"].values
-        target = csv_file.values[1:]
+        target = csv_file.values[:, 1:].astype(int)
         split_map = {"train":0,
                     "val":1,
                     "test":2,
                     "all": None}
-
-        mask = splits["partition"] = split_map[split]
+        
+        mask = splits == split_map[split]
         self.filename = filename[mask]
         self.target = target[mask]
 
@@ -67,9 +68,16 @@ class CelebA(torch.utils.data.Dataset):
         return len(self.target)
 
     def __getitem__(self, idx):
-        image = Image.open(self.fn("img_aling_celeba", self.filename[idx]))
-        image = self.transform(image)
-        target = self.target[idx]
+
+        try: 
+            image = Image.open(self.fn("img_align_celeba", self.filename[idx]))
+            image = self.transform(image)
+            target = self.target[idx]
+        except:
+            print(self.filename[idx], " not found")
+            image = Image.open(self.fn("img_align_celeba", self.filename[0]))
+            image = self.transform(image)
+            target = self.target[0]
 
         return image, target
 
@@ -183,10 +191,10 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         h = w = 64
         tp = transforms.Compose([transforms.Resize((h, w)), transforms.ToTensor()])
         train_set, val_set = [
-            CelebA("/scratch/frwa/celeba", split=split, transform=tp) for split in ["train", "test"]
+            CelebA("/scratch/frwa/", split=split, transform=tp) for split in ["train", "test"]
         ]
-        train_loader = DataLoader(train_set, batch_size=batch_size, pin_memory=True)
-        val_loader = DataLoader(val_set, batch_size=batch_size, pin_memory=True)
+        train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=8, pin_memory=True)
+        val_loader = DataLoader(val_set, batch_size=batch_size, num_workers=8, pin_memory=True)
     elif name == "cifar10":
         # image resolution 32 x 32
         dataset = CIFAR10(

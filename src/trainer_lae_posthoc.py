@@ -1,5 +1,6 @@
 from ast import Break
 from builtins import breakpoint
+from multiprocessing import reduction
 import os
 from pyexpat import model
 from turtle import RawTurtle
@@ -48,6 +49,7 @@ def inference_on_dataset(la, encoder, val_loader, latent_dim, device):
 
     # forward eval la
     x, z_mu, z_sigma, labels, x_rec_mu, x_rec_sigma = [], [], [], [], [], []
+    mse, likelihood = [], []
     for i, (X, y) in tqdm(enumerate(val_loader)):
         t0 = time.time()
         with torch.no_grad():
@@ -55,7 +57,7 @@ def inference_on_dataset(la, encoder, val_loader, latent_dim, device):
             X = X.view(X.size(0), -1).to(device)
 
             if encoder is None:
-                mu_rec, var_rec, mu_latent, var_latent = la(
+                mu_rec, var_rec, mu_latent, var_latent, samples = la(
                     X,
                     pred_type=pred_type,
                     return_latent_representation=True,
@@ -64,12 +66,16 @@ def inference_on_dataset(la, encoder, val_loader, latent_dim, device):
                 z_sigma += [var_latent.sqrt()]
             else:
                 mu_latent = encoder(X)
-                mu_rec, var_rec = la(
+                mu_rec, var_rec, samples = la(
                     mu_latent,
                     pred_type=pred_type,
                     return_latent_representation=False,
                     latent_dim=latent_dim,
                 )
+
+            likelihood_i = 0
+            for sample in samples:
+                likelihood_i += F.mse_loss(sample.view(*X.shape), X, reduction="sum")
 
             x_rec_mu += [mu_rec.detach()]
             x_rec_sigma += [var_rec.sqrt()]
@@ -78,6 +84,9 @@ def inference_on_dataset(la, encoder, val_loader, latent_dim, device):
             labels += [y]
             z_mu += [mu_latent]
 
+            mse += [F.mse_loss(mu_rec.view(*X.shape), X, reduction="sum")]
+            likelihood += [likelihood_i / len(samples)]
+
     x = torch.cat(x, dim=0).cpu().numpy()
     labels = torch.cat(labels, dim=0).numpy()
     z_mu = torch.cat(z_mu, dim=0).cpu().numpy()
@@ -85,8 +94,10 @@ def inference_on_dataset(la, encoder, val_loader, latent_dim, device):
         z_sigma = torch.cat(z_sigma, dim=0).cpu().numpy()
     x_rec_mu = torch.cat(x_rec_mu, dim=0).cpu().numpy()
     x_rec_sigma = torch.cat(x_rec_sigma, dim=0).cpu().numpy()
+    mse = torch.stack(mse).cpu().numpy()
+    likelihood = torch.stack(likelihood).cpu().numpy().reshape(-1, 1)
 
-    return x, labels, z_mu, z_sigma, x_rec_mu, x_rec_sigma
+    return x, labels, z_mu, z_sigma, x_rec_mu, x_rec_sigma, mse, likelihood
 
 
 def inference_on_latent_grid(la_original, encoder, z_mu, latent_dim, device):
@@ -153,9 +164,12 @@ def test_lae_decoder(config):
 
     train_loader, val_loader = get_data(config["dataset"], config["batch_size"])
 
-    x, labels, z, _, x_rec_mu, x_rec_sigma = inference_on_dataset(
+    x, labels, z, _, x_rec_mu, x_rec_sigma, mse, likelihood = inference_on_dataset(
         la, encoder, val_loader, latent_dim, device
     )
+
+    save_metric(path, "nll", likelihood.sum())
+    save_metric(path, "mse", mse.sum())
 
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
         la, encoder, z, latent_dim, device
@@ -178,7 +192,7 @@ def test_lae_decoder(config):
 
         _, ood_val_loader = get_data(config["ood_dataset"], config["batch_size"])
 
-        ood_x, _, _, _, ood_x_rec_mu, ood_x_rec_sigma = inference_on_dataset(
+        ood_x, _, _, _, ood_x_rec_mu, ood_x_rec_sigma, _, _ = inference_on_dataset(
             la, encoder, ood_val_loader, latent_dim, device
         )
 
@@ -200,7 +214,7 @@ def test_lae_decoder(config):
             path, likelihood_in, likelihood_out, pre_fix="likelihood_"
         )
 
-        train_x, _, _, _, train_x_rec_mu, _ = inference_on_dataset(
+        train_x, _, _, _, train_x_rec_mu, _, _, _ = inference_on_dataset(
             la, encoder, train_loader, latent_dim, device
         )
 
@@ -226,12 +240,15 @@ def test_lae_encoder_decoder(config):
     latent_dim = len(encoder.encoder) - 1
 
     la = load_laplace(f"../weights/{path}/ae.pkl")
-    breakpoint()
+    
     train_loader, val_loader = get_data(config["dataset"], config["batch_size"])
 
-    x, labels, z_mu, z_sigma, x_rec_mu, x_rec_sigma = inference_on_dataset(
+    x, labels, z_mu, z_sigma, x_rec_mu, x_rec_sigma, mse, likelihood = inference_on_dataset(
         la, None, val_loader, latent_dim, device
     )
+
+    save_metric(path, "nll", likelihood.sum())
+    save_metric(path, "mse", mse.sum())
 
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
         deepcopy(la), None, z_mu, latent_dim, device
@@ -260,6 +277,8 @@ def test_lae_encoder_decoder(config):
             ood_z_sigma,
             ood_x_rec_mu,
             ood_x_rec_sigma,
+            ood_mse, 
+            ood_likelihood,
         ) = inference_on_dataset(la, None, ood_val_loader, latent_dim, device)
 
         if config["dataset"] in ("mnist", "fashionmnist"):
@@ -287,7 +306,7 @@ def test_lae_encoder_decoder(config):
             path, x_rec_sigma, ood_x_rec_sigma, pre_fix="output_"
         )
 
-        train_x, _, _, _, train_x_rec_mu, _ = inference_on_dataset(
+        train_x, _, _, _, train_x_rec_mu, _, _, _ = inference_on_dataset(
             la, None, train_loader, latent_dim, device
         )
 

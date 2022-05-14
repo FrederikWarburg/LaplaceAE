@@ -32,6 +32,7 @@ class LitAutoEncoder(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
 
+        self.loss_fn = config["loss_fn"]
         self.use_var_decoder = config["use_var_decoder"]
         self.latent_size = config["latent_size"]
 
@@ -82,7 +83,9 @@ class LitAutoEncoder(pl.LightningModule):
                 + log_sigma_x_hat.view(*x.shape)
             ).mean()
         else:
-            loss = F.mse_loss(mu_x_hat.view(*x.shape), x)
+            breakpoint()
+            b = x.shape[0]
+            loss = F.mse_loss(mu_x_hat.view(*x.shape), x) 
 
         self.log("train_loss", loss)
         return loss
@@ -102,8 +105,9 @@ class LitAutoEncoder(pl.LightningModule):
                 + log_sigma_x_hat
             ).mean()
         else:
-            loss = F.mse_loss(mu_x_hat.view(*x.shape), x)
-
+            b = x.shape[0]
+            loss = F.mse_loss(mu_x_hat.view(*x.shape), x) 
+            
         self.log("val_loss", loss)
 
         if self.current_epoch > self.last_epoch_logged_val:

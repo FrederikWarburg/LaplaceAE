@@ -1,10 +1,15 @@
 from builtins import breakpoint
 from src.models.protein import TOKEN_SIZE
+from fileinput import filename
 import torch
 import numpy as np
 from torch.utils.data import DataLoader, TensorDataset, random_split
-from torchvision.datasets import MNIST, KMNIST, CelebA, CIFAR10, FashionMNIST, SVHN
+from torchvision.datasets import MNIST, KMNIST, CIFAR10, FashionMNIST, SVHN
 from torchvision import transforms
+import pandas as pd
+from functools import partial
+from PIL import Image
+import os
 
 
 def mask_regions(dataset):
@@ -38,6 +43,44 @@ def mask_half(dataset):
         n, h, w = dataset.data.shape
 
     idx = np.random.randint()
+
+
+class CelebA(torch.utils.data.Dataset):
+    def __init__(self, root, split = "train", transform = None):
+        
+        self.transform = transform
+        self.root = root
+        self.fn = partial(os.path.join, self.root, "celeba")
+        csv_file = pd.read_csv(self.fn("list_attr_celeba.txt"), index_col=0)
+        splits = pd.read_csv(self.fn("list_eval_partition.txt"), delimiter=" ", header=None).values[:, 1].astype(int)
+        
+        filename = csv_file["image_id"].values
+        target = csv_file.values[:, 1:].astype(int)
+        split_map = {"train":0,
+                    "val":1,
+                    "test":2,
+                    "all": None}
+        
+        mask = splits == split_map[split]
+        self.filename = filename[mask]
+        self.target = target[mask]
+
+    def __len__(self):
+        return len(self.target)
+
+    def __getitem__(self, idx):
+
+        try: 
+            image = Image.open(self.fn("img_align_celeba", self.filename[idx]))
+            image = self.transform(image)
+            target = self.target[idx]
+        except:
+            print(self.filename[idx], " not found")
+            image = Image.open(self.fn("img_align_celeba", self.filename[0]))
+            image = self.transform(image)
+            target = self.target[0]
+
+        return image, target
 
 
 def get_data(name, batch_size=32, missing_data_imputation=False):
@@ -146,19 +189,13 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         )
 
     elif name == "celeba":
-        dataset = CelebA(
-            "../data/", split="train", download=True, transform=transforms.ToTensor()
-        )
-        dataset_train, dataset_val = random_split(
-            dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
-        )
-        train_loader = DataLoader(
-            dataset_train, batch_size=batch_size, num_workers=8, pin_memory=True
-        )
-        val_loader = DataLoader(
-            dataset_val, batch_size=batch_size, num_workers=8, pin_memory=True
-        )
-
+        h = w = 64
+        tp = transforms.Compose([transforms.Resize((h, w)), transforms.ToTensor()])
+        train_set, val_set = [
+            CelebA("/scratch/frwa/", split=split, transform=tp) for split in ["train", "test"]
+        ]
+        train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=8, pin_memory=True)
+        val_loader = DataLoader(val_set, batch_size=batch_size, num_workers=8, pin_memory=True)
     elif name == "cifar10":
         # image resolution 32 x 32
         dataset = CIFAR10(

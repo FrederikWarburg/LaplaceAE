@@ -73,8 +73,8 @@ class BayesianLinear(nn.Module):
         self.bias_rho = nn.Parameter(torch.Tensor(out_features).uniform_(-5, -4))
         self.bias = Gaussian(self.bias_mu, self.bias_rho)
         # Prior distributions
-        self.weight_prior = ScaleMixtureGaussian(PI, SIGMA_1, SIGMA_2)
-        self.bias_prior = ScaleMixtureGaussian(PI, SIGMA_1, SIGMA_2)
+        self.weight_prior = Gaussian(PI, SIGMA_1, SIGMA_2)
+        self.bias_prior = Gaussian(PI, SIGMA_1, SIGMA_2)
         self.log_prior = 0
         self.log_variational_posterior = 0
 

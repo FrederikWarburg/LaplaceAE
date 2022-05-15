@@ -4,35 +4,27 @@ from abc import abstractmethod
 from torch.nn.utils import parameters_to_vector
 
 
-class Sampler:
+class BaseLaplace:
     def __init__(self):
-        super(Sampler, self).__init__()
+        super(BaseLaplace, self).__init__()
 
     @abstractmethod
     def sample(self, *args, **kwargs):
         pass
 
 
-class DiagSampler(Sampler):
+class DiagLaplace(BaseLaplace):
     def sample(self, parameters, posterior_scale, n_samples=100):
         n_params = len(parameters)
         samples = torch.randn(n_samples, n_params, device=parameters.device)
         samples = samples * posterior_scale.reshape(1, n_params)
         return parameters.reshape(1, n_params) + samples
 
-    def invert(self, hessian):
-        return 1.0 / (hessian + 1e-6)
-
-    def kl_div(self, mu_q, sigma_q):
-        k = len(mu_q)
-
-        return 0.5 * (
-            torch.log(1.0 / sigma_q)
-            - k
-            + torch.matmul(mu_q.T, mu_q)
-            + torch.sum(sigma_q)
-        )
-
+    def posterior_scale(self, hessian, scale = 1, prior_prec = 1):
+        
+        posterior_precision = hessian * scale + prior_prec
+        return 1.0 / (posterior_precision.sqrt() + 1e-6)
+    
     def init_hessian(self, data_size, net, device):
 
         hessian = data_size * torch.ones_like(
@@ -43,12 +35,16 @@ class DiagSampler(Sampler):
     def scale(self, h_s, b, data_size):
         return h_s / b * data_size
 
-    def aveage_hessian_samples(self, hessian, constant):
+    def average_hessian_samples(self, hessian, constant):
+        
+        # average over samples
         hessian = torch.stack(hessian).mean(dim=0) if len(hessian) > 1 else hessian[0]
-        return constant * hessian + 1
+        
+        # get posterior_precision
+        return constant * hessian
 
 
-class BlockSampler(Sampler):
+class BlockLaplace(BaseLaplace):
     def sample(self, parameters, posterior_scale, n_samples=100):
         n_samples = torch.tensor([n_samples])
         count = 0
@@ -68,23 +64,11 @@ class BlockSampler(Sampler):
         param_samples = torch.cat(param_samples, dim=1).to(parameters.device)
         return param_samples
 
-    def invert(self, hessian):
-        posterior_scale = [torch.cholesky_inverse(h) for h in hessian]
+    def posterior_scale(self, hessian, scale = 1, prior_prec = 1):
+        
+        posterior_precision = [h * scale + torch.diag_embed(prior_prec * torch.ones(h.shape[0])) for h in hessian]
+        posterior_scale = [torch.cholesky_inverse(layer_post_prec) for layer_post_prec in posterior_precision]
         return posterior_scale
-
-    def kl_div(self, mu_q, sigma_q):
-
-        k = len(mu_q)
-
-        # TODO: fix later.
-        sigma_q = torch.cat([torch.diagonal(s) for s in sigma_q])
-
-        return 0.5 * (
-            torch.log(1.0 / sigma_q)
-            - k
-            + torch.matmul(mu_q.T, mu_q)
-            + torch.sum(sigma_q)
-        )
 
     def init_hessian(self, data_size, net, device):
 

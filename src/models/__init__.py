@@ -9,6 +9,8 @@ from src.models.svhn_stochman import Encoder_stochman_svhn_conv, Decoder_stochma
 from src.models.svhn import Encoder_svhn_conv, Decoder_svhn_conv
 from src.models.protein import Encoder_protein, Decoder_protein
 from src.models.protein_stochman import Encoder_stochman_protein, Decoder_stochman_protein
+from src.models.celeba import Encoder_celeba, Decoder_celeba
+from src.models.celeba_stochman import Encoder_stochman_celeba, Decoder_stochman_celeba
 
 encoders = {
     "mnist": Encoder_mnist,
@@ -18,6 +20,7 @@ encoders = {
     #"cifar10_conv": Encoder_cifar10_conv,
     "svhn_conv": Encoder_svhn_conv,
     "protein": Encoder_protein,
+    "celeba_conv" : Encoder_celeba
 }
 
 stochman_encoders = {
@@ -28,6 +31,7 @@ stochman_encoders = {
     #"cifar10_conv": Encoder_cifar10_stochman_conv,
     "svhn_conv": Encoder_stochman_svhn_conv,
     "protein": Encoder_stochman_protein,
+    "celeba_conv" : Encoder_stochman_celeba,
 }
 
 decoders = {
@@ -38,6 +42,7 @@ decoders = {
     #"cifar10_conv": Decoder_cifar10_conv,
     "svhn_conv": Decoder_svhn_conv,
     "protein": Decoder_protein,
+    "celeba_conv" : Decoder_celeba,
 }
 
 stochman_decoders = {
@@ -48,6 +53,7 @@ stochman_decoders = {
     #"cifar10_conv": Decoder_cifar10_stochman_conv,
     "svhn_conv": Decoder_stochman_svhn_conv,
     "protein": Decoder_stochman_protein,
+    "celeba_conv" : Decoder_stochman_celeba,
 }
 
 

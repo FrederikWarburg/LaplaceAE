@@ -3,9 +3,11 @@ exp_name : "ood_experiment/"
 
 # training
 train : True
-kl_weight: 1e-6
+posthoc : False
+alpha: 1e-6
 train_samples: 1
-learning_rate: 1e-4
+learning_rate : 1e-4
+prior_precision: 1
 
 # test
 ood : True
@@ -15,7 +17,7 @@ test_samples: 100
 # data
 dataset : "cifar10"
 ood_dataset : "svhn"
-batch_size: 200
+batch_size: 8
 
 # model
 pretrained : False
@@ -25,5 +27,7 @@ latent_size : 512
 # hessian
 backend : "layer" 
 approximation : "mix" #block, exact, diag, mix
-hessian_memory_factor : 0
-one_hessian_per_sampling : False
+hessian_memory_factor : 0.99
+one_hessian_per_sampling : True
+update_hessian : True
+hessian_scale : 1

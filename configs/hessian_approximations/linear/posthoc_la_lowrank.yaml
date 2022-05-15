@@ -1,0 +1,24 @@
+# experiment name
+exp_name : "hessian_approx/"
+
+# training
+train : True
+learning_rate : 1e-3
+
+# test
+ood : True
+
+# data
+dataset : "mnist"
+ood_dataset : "kmnist"
+batch_size: 50
+
+# model
+pretrained : False
+no_conv : True
+latent_size : 2
+use_var_decoder : False
+
+# hessian 
+approximation : "lowrank"
+use_la_encoder : True

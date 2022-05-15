@@ -21,7 +21,7 @@ def load_laplace(filepath):
     return la
 
 
-def create_exp_name(config):
+def create_exp_name(config, exclude=[]):
 
     name = config["exp_name"]
 
@@ -32,8 +32,9 @@ def create_exp_name(config):
         "train_samples",
         "dropout_rate",
         "use_var_decoder",
+        "likelihood",
     ]:
-        if key in config:
+        if key in config and key not in exclude:
             name += f"[{key}_{config[key]}]_"
 
     return name

@@ -8,17 +8,28 @@ class Encoder_mnist(torch.nn.Module):
         self.latent_size = latent_size
         self.dropout = dropout
 
-        # for mc dropout we need to include dropout in our model
-        self.encoder = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(784, 512),
-            nn.Dropout(p=dropout),
-            nn.Tanh(),
-            nn.Linear(512, 256),
-            nn.Dropout(p=dropout),
-            nn.Tanh(),
-            nn.Linear(256, latent_size),
-        )
+        if dropout > 0:
+            # for mc dropout we need to include dropout in our model
+            self.encoder = nn.Sequential(
+                nn.Flatten(),
+                nn.Linear(784, 512),
+                nn.Dropout(p=dropout),
+                nn.Tanh(),
+                nn.Linear(512, 256),
+                nn.Dropout(p=dropout),
+                nn.Tanh(),
+                nn.Linear(256, latent_size),
+            )
+        else:
+            # for mc dropout we need to include dropout in our model
+            self.encoder = nn.Sequential(
+                nn.Flatten(),
+                nn.Linear(784, 512),
+                nn.Tanh(),
+                nn.Linear(512, 256),
+                nn.Tanh(),
+                nn.Linear(256, latent_size),
+            )      
 
     def forward(self, x):
         return self.encoder(x)
@@ -31,15 +42,24 @@ class Decoder_mnist(torch.nn.Module):
         self.dropout = dropout
 
         # for mc dropout we need to include dropout in our model
-        self.decoder = nn.Sequential(
-            nn.Linear(latent_size, 256),
-            nn.Dropout(p=dropout),
-            nn.Tanh(),
-            nn.Linear(256, 512),
-            nn.Dropout(p=dropout),
-            nn.Tanh(),
-            nn.Linear(512, 784),
-        )
+        if dropout > 0:
+            self.decoder = nn.Sequential(
+                nn.Linear(latent_size, 256),
+                nn.Dropout(p=dropout),
+                nn.Tanh(),
+                nn.Linear(256, 512),
+                nn.Dropout(p=dropout),
+                nn.Tanh(),
+                nn.Linear(512, 784),
+            )
+        else:
+            self.decoder = nn.Sequential(
+                nn.Linear(latent_size, 256),
+                nn.Tanh(),
+                nn.Linear(256, 512),
+                nn.Tanh(),
+                nn.Linear(512, 784),
+            )
 
     def forward(self, x):
         return self.decoder(x)

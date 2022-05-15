@@ -39,7 +39,7 @@ class LitVariationalAutoEncoder(pl.LightningModule):
         self.use_var_decoder = config["use_var_decoder"]
         self.config = config
 
-        latent_size = 2
+        latent_size = config["latent_size"]
         self.mu_encoder = get_encoder(config, latent_size)
         self.var_encoder = get_encoder(config, latent_size)
 

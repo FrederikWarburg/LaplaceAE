@@ -323,6 +323,7 @@ def train_ae(config):
         auto_scale_batch_size=True,
         logger=logger,
         callbacks=callbacks,
+        max_epochs=1
     )
     trainer.fit(model, train_loader, val_loader)
 

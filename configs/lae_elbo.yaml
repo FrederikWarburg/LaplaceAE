@@ -20,7 +20,7 @@ batch_size: 4
 pretrained : False
 no_conv : True
 latent_size : 2
-loss_fn : "categorical"
+loss_fn : "mse"
 
 # hessian
 backend : "layer" 

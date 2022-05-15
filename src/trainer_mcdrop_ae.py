@@ -39,7 +39,7 @@ class LitDropoutAutoEncoder(pl.LightningModule):
         super().__init__()
 
         self.loss_fn = config['loss_fn']
-        latent_size = 2
+        latent_size = config['latent_size']
         self.encoder = get_encoder(config, latent_size, dropout=config["dropout_rate"])
         self.decoder = get_decoder(config, latent_size, dropout=config["dropout_rate"])
         self.config = config
@@ -365,6 +365,7 @@ def train_mcdropout_ae(config):
         auto_scale_batch_size=True,
         logger=logger,
         callbacks=callbacks,
+        max_epochs=1,
     )
     trainer.fit(model, train_loader, val_loader)
 

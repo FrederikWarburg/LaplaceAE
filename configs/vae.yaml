@@ -9,7 +9,7 @@ kl_weight: 0.01
 ood: False
 
 # data
-dataset : "protein"
+dataset : "mnist"
 ood_dataset : "kmnist"
 batch_size: 128
     
@@ -17,4 +17,4 @@ batch_size: 128
 use_var_decoder : False
 no_conv: True
 latent_size: 2
-loss_fn: "categorical"
+loss_fn: "mse"

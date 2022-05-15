@@ -13,15 +13,15 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks import LearningRateMonitor
 from datetime import datetime
-from data import get_data, generate_latent_grid
-from models import get_encoder, get_decoder
+from src.data import get_data, generate_latent_grid
+from src.models import get_encoder, get_decoder
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from copy import deepcopy
 import torchvision
 import torch.nn.functional as F
 import yaml
 import argparse
-from visualizer import (
+from src.visualizer import (
     plot_reconstructions,
     plot_latent_space,
     plot_latent_space_ood,
@@ -31,11 +31,11 @@ from visualizer import (
     plot_calibration_plot,
 )
 import numpy as np
-from hessian import layerwise as lw
-from hessian import backpack as bp
+from src.hessian import layerwise as lw
+from src.hessian import backpack as bp
 from backpack import extend
-from utils import create_exp_name, compute_typicality_score
-from hessian import sampler
+from src.utils import create_exp_name, compute_typicality_score
+from src.hessian import sampler
 
 samples = {
     "block": sampler.BlockSampler,

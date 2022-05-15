@@ -71,7 +71,7 @@ class LitAutoEncoder(pl.LightningModule):
                 + log_sigma_x_hat.view(*x.shape)
             ).mean()
         else:
-            loss = F.mse_loss(mu_x_hat, x) if self.loss_fn == 'mse' else F.cross_entropy(mu_x_hat, x.long())
+            loss = F.mse_loss(mu_x_hat, x) if self.loss_fn == 'mse' else F.cross_entropy(mu_x_hat, x.argmax(dim=2))
 
         self.log("train_loss", loss)
         return loss
@@ -91,7 +91,7 @@ class LitAutoEncoder(pl.LightningModule):
                 + log_sigma_x_hat
             ).mean()
         else:
-            loss = F.mse_loss(mu_x_hat, x) if self.loss_fn == 'mse' else F.cross_entropy(mu_x_hat, x.long())
+            loss = F.mse_loss(mu_x_hat, x) if self.loss_fn == 'mse' else F.cross_entropy(mu_x_hat, x.argmax(dim=2))
 
         self.log("val_loss", loss)
 

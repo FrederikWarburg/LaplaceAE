@@ -1,3 +1,6 @@
+# experiment name
+exp_name : ""
+
 # training
 train : True
 

@@ -1,14 +1,20 @@
+# experiment name
+exp_name : ""
 
 # training
-train : False
+train : True
 
 # test
 test_samples: 100
 
 # data
-dataset : "mnist"
+dataset : "protein"
 ood_dataset : "kmnist"
 batch_size: 128
     
 # model
 dropout_rate: 0.2
+use_var_decoder : False
+no_conv : True
+latent_size : 2
+loss_fn: "categorical"

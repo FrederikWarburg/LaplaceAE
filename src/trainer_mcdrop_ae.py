@@ -71,7 +71,7 @@ class LitDropoutAutoEncoder(pl.LightningModule):
 
         z = self.encoder(x)
         x_hat = self.decoder(z)
-        loss = F.mse_loss(x_hat, x) if self.loss_fn == 'mse' else F.cross_entropy(x_hat, x)
+        loss = F.mse_loss(x_hat, x) if self.loss_fn == 'mse' else F.cross_entropy(x_hat, x.argmax(dim=2))
         self.log("train_loss", loss)
         return loss
 
@@ -98,7 +98,7 @@ class LitDropoutAutoEncoder(pl.LightningModule):
         mu = x_hat_running / config["test_samples"]
         mu2 = x_hat2_running / config["test_samples"]
 
-        loss = F.mse_loss(x_hat.view(*x.shape), x)
+        loss = F.mse_loss(x_hat.view(*x.shape), x) if self.loss_fn == 'mse' else F.cross_entropy(x_hat, x.argmax(dim=2))
         self.log("val_loss", loss)
 
         if self.current_epoch > self.last_epoch_logged_val:

@@ -10,3 +10,4 @@ lightning_log/
 weights/
 
 *.png
+*.npy

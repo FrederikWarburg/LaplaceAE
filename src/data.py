@@ -11,39 +11,6 @@ from PIL import Image
 import os
 
 
-def mask_regions(dataset):
-
-    if dataset.data.ndim == 4:
-        n, c, h, w = dataset.data.shape
-    else:
-        n, h, w = dataset.data.shape
-
-    sx, sy = 10, 10
-
-    y = np.random.randint(0, h - sy, n)
-    x = np.random.randint(0, w - sx, n)
-
-    for i, (xi, yi) in enumerate(zip(x, y)):
-
-        if dataset.data.ndim == 4:
-            dataset.data[i, :, xi : xi + sx, yi : yi + sy] = 0
-        else:
-            dataset.data[i, xi : xi + sx, yi : yi + sy] = 0
-
-    return dataset
-
-
-def mask_half(dataset):
-    breakpoint()
-
-    if dataset.data.ndim == 4:
-        n, c, h, w = dataset.data.shape
-    else:
-        n, h, w = dataset.data.shape
-
-    idx = np.random.randint()
-
-
 class CelebA(torch.utils.data.Dataset):
     def __init__(self, root, split="train", transform=None):
 
@@ -89,9 +56,6 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
         dataset = MNIST(
             "../data/", train=True, download=True, transform=transforms.ToTensor()
         )
-
-        if missing_data_imputation:
-            dataset = mask_half(dataset)
 
         train, val = random_split(
             dataset, [55000, 5000], generator=torch.Generator().manual_seed(42)
@@ -145,9 +109,6 @@ def get_data(name, batch_size=32, missing_data_imputation=False):
                 ]
             ),
         )
-
-        if missing_data_imputation:
-            dataset = mask_regions(dataset)
 
         train, val = random_split(
             dataset, [73257 - 5000, 5000], generator=torch.Generator().manual_seed(42)

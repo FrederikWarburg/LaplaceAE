@@ -38,8 +38,12 @@ class LitDropoutAutoEncoder(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
 
-        self.encoder = get_encoder(config, config["latent_size"], dropout=config["dropout_rate"])
-        self.decoder = get_decoder(config, config["latent_size"], dropout=config["dropout_rate"])
+        self.encoder = get_encoder(
+            config, config["latent_size"], dropout=config["dropout_rate"]
+        )
+        self.decoder = get_decoder(
+            config, config["latent_size"], dropout=config["dropout_rate"]
+        )
         self.config = config
 
         self.last_epoch_logged_val = -1
@@ -225,9 +229,9 @@ def inference_on_latent_grid(decoder, z_mu, N, device):
 
     f_mu = torch.cat(all_f_mu, dim=0)
     f_sigma = torch.cat(all_f_sigma, dim=0)
-    
+
     # get diagonal elements
-    sigma_vector = np.reshape(f_sigma, (n_points_axis*n_points_axis, -1)).mean(axis=1)
+    sigma_vector = np.reshape(f_sigma, (n_points_axis * n_points_axis, -1)).mean(axis=1)
 
     return xg_mesh, yg_mesh, sigma_vector, n_points_axis
 
@@ -278,7 +282,7 @@ def test_mcdropout_ae(config):
 
     if config["dataset"] == "swissrole":
         labels = None
-    
+
     plot_latent_space(path, z_mu, labels, xg_mesh, yg_mesh, sigma_vector, n_points_axis)
 
     plot_reconstructions(path, x, x_rec_mu, x_rec_sigma)

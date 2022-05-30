@@ -10,8 +10,15 @@ from models.svhn import Encoder_svhn_conv, Decoder_svhn_conv
 from models.cifar10_stochman import (
     Encoder_cifar10_stochman_conv,
     Decoder_cifar10_stochman_conv,
+    Encoder_stochman_cifar10,
+    Decoder_stochman_cifar10,
 )
-from models.cifar10 import Encoder_cifar10_conv, Decoder_cifar10_conv
+from models.cifar10 import (
+    Encoder_cifar10_conv,
+    Decoder_cifar10_conv,
+    Decoder_cifar10,
+    Encoder_cifar10,
+)
 from models.fashionmnist import (
     Encoder_fashionmnist,
     Encoder_fashionmnist_conv,
@@ -33,8 +40,9 @@ encoders = {
     "fashionmnist": Encoder_fashionmnist,
     "fashionmnist_conv": Encoder_fashionmnist_conv,
     "cifar10_conv": Encoder_cifar10_conv,
+    "cifar10": Encoder_cifar10,
     "svhn_conv": Encoder_svhn_conv,
-    "celeba_conv" : Encoder_celeba
+    "celeba_conv": Encoder_celeba,
 }
 
 stochman_encoders = {
@@ -43,8 +51,9 @@ stochman_encoders = {
     "fashionmnist": Encoder_stochman_fashionmnist,
     "fashionmnist_conv": Encoder_stochman_fashionmnist_conv,
     "cifar10_conv": Encoder_cifar10_stochman_conv,
+    "cifar10": Encoder_stochman_cifar10,
     "svhn_conv": Encoder_stochman_svhn_conv,
-    "celeba_conv" : Encoder_stochman_celeba,
+    "celeba_conv": Encoder_stochman_celeba,
 }
 
 decoders = {
@@ -53,8 +62,9 @@ decoders = {
     "fashionmnist": Decoder_fashionmnist,
     "fashionmnist_conv": Decoder_fashionmnist_conv,
     "cifar10_conv": Decoder_cifar10_conv,
+    "cifar10": Decoder_cifar10,
     "svhn_conv": Decoder_svhn_conv,
-    "celeba_conv" : Decoder_celeba,
+    "celeba_conv": Decoder_celeba,
 }
 
 stochman_decoders = {
@@ -63,8 +73,9 @@ stochman_decoders = {
     "fashionmnist": Decoder_stochman_fashionmnist,
     "fashionmnist_conv": Decoder_stochman_fashionmnist_conv,
     "cifar10_conv": Decoder_cifar10_stochman_conv,
+    "cifar10": Decoder_stochman_cifar10,
     "svhn_conv": Decoder_stochman_svhn_conv,
-    "celeba_conv" : Decoder_stochman_celeba,
+    "celeba_conv": Decoder_stochman_celeba,
 }
 
 

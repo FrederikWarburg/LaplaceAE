@@ -60,22 +60,23 @@ class Encoder_stochman_fashionmnist_conv(torch.nn.Module):
         self.latent_size = latent_size
 
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 16, 3, stride=1, padding=1),
+            nn.Conv2d(1, 64, 3, stride=1, padding=1),
             nn.Tanh(),
-            nn.Conv2d(16, 32, 3, stride=1, padding=1),
             nn.MaxPool2d(2),
-            nn.Tanh(),
-            nn.Conv2d(32, 64, 3, stride=1, padding=1),
-            nn.Tanh(),
+            # nn.Conv2d(64, 64, 3, stride=1, padding=1), nn.Tanh(),
+            # nn.Conv2d(64, 64, 3, stride=1, padding=1), nn.Tanh(),
             nn.Conv2d(64, 64, 3, stride=1, padding=1),
+            nn.Tanh(),
             nn.MaxPool2d(2),
-            nn.Tanh(),
-            nn.Conv2d(64, 64, 3, stride=1, padding=1),
-            nn.Tanh(),
-            nn.Conv2d(64, 64, 3, stride=1, padding=1),
-            nn.Tanh(),
             nn.Flatten(),
-            nn.Linear(7 * 7 * 64, latent_size),
+            # nn.Conv2d(64, 64, 3, stride=1, padding=1), nn.Tanh(),
+            # nn.Conv2d(64, 64, 3, stride=1, padding=1), nn.Tanh(),
+            nn.Linear(7 * 7 * 64, 2048),
+            nn.Tanh(),
+            nn.Linear(2048, 1024),
+            nn.Tanh(),
+            # nn.Linear(1024, 512), nn.Tanh(),
+            nn.Linear(1024, latent_size),
         )
 
     def forward(self, x):
@@ -88,22 +89,24 @@ class Decoder_stochman_fashionmnist_conv(torch.nn.Module):
         self.latent_size = latent_size
 
         self.decoder = nn.Sequential(
-            nn.Linear(self.latent_size, 7 * 7 * 64),
+            nn.Linear(self.latent_size, 1024),
+            nn.Tanh(),
+            # nn.Linear(512, 1024), nn.Tanh(),
+            nn.Linear(1024, 2048),
+            nn.Tanh(),
+            nn.Linear(2048, 7 * 7 * 64),
+            nn.Tanh(),
             nn.Reshape(64, 7, 7),
-            nn.Tanh(),
-            nn.Conv2d(64, 64, 3, stride=1, padding=1),
-            nn.Tanh(),
+            # nn.Conv2d(64, 64, 3, stride=1, padding=1), nn.Tanh(),
             nn.Conv2d(64, 64, 3, stride=1, padding=1),
             nn.Upsample(scale_factor=2, mode="nearest"),
             nn.Tanh(),
+            # nn.Conv2d(64, 64, 3, stride=1, padding=1), nn.Tanh(),
             nn.Conv2d(64, 64, 3, stride=1, padding=1),
-            nn.Tanh(),
-            nn.Conv2d(64, 32, 3, stride=1, padding=1),
             nn.Upsample(scale_factor=2, mode="nearest"),
             nn.Tanh(),
-            nn.Conv2d(32, 16, 3, stride=1, padding=1),
-            nn.Tanh(),
-            nn.Conv2d(16, 1, 3, stride=1, padding=1),
+            # nn.Conv2d(64, 64, 3, stride=1, padding=1), nn.Tanh(),
+            nn.Conv2d(64, 1, 3, stride=1, padding=1),
         )
 
     def forward(self, x):

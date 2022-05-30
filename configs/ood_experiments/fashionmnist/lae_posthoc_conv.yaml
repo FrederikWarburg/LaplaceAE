@@ -8,12 +8,12 @@ posthoc : True
 
 # test
 ood : True
-test_samples: 100
+test_samples: 50
 
 # data
 dataset : "fashionmnist"
 ood_dataset : "mnist"
-batch_size: 50
+batch_size: 5
 
 # model
 pretrained : False
@@ -25,3 +25,5 @@ use_var_decoder : False
 # hessian
 backend : "layer" 
 approximation : "mix" #block, exact, diag, mix
+hessian_scale : 1
+missing_data_imputation : False

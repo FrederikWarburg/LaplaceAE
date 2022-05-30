@@ -19,7 +19,6 @@ sys.path.append("../stochman")
 from stochman import nnj
 
 
-
 def create_dataset():
 
     N = 1000
@@ -56,6 +55,7 @@ def create_model():
 
     return model
 
+
 def create_model_stochman():
 
     model = nnj.Sequential(
@@ -67,7 +67,6 @@ def create_model_stochman():
     )
 
     return model
-
 
 
 def train_model(dataset, model):
@@ -157,7 +156,7 @@ def compute_hessian_laplace_redux(model, dataloader):
 
 
 def compute_hessian_ours(dataloader, net):
-    hessian_calculator = lw.MseHessianCalculator("exact")    
+    hessian_calculator = lw.MseHessianCalculator("exact")
 
     feature_maps = []
 

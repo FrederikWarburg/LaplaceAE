@@ -29,7 +29,7 @@ class Encoder_mnist(torch.nn.Module):
                 nn.Linear(512, 256),
                 nn.Tanh(),
                 nn.Linear(256, latent_size),
-            )      
+            )
 
     def forward(self, x):
         return self.encoder(x)

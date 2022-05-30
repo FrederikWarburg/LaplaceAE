@@ -79,7 +79,7 @@ class BayesianLinear(nn.Module):
         self.log_variational_posterior = 0
 
     def forward(self, input, sample=False, calculate_log_probs=False):
-        
+
         if self.training or sample:
             weight = self.weight.sample()
             bias = self.bias.sample()

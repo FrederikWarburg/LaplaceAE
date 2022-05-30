@@ -203,10 +203,12 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         x, y = train_batch
         b, c, h, w = x.shape
 
-        sigma_q = self.laplace.posterior_scale(self.hessian, self.hessian_scale, self.prior_prec)
+        sigma_q = self.laplace.posterior_scale(
+            self.hessian, self.hessian_scale, self.prior_prec
+        )
         mu_q = parameters_to_vector(self.net.parameters()).unsqueeze(1)
         regularizer = self.weight_decay(mu_q, self.prior_prec)
-        
+
         x_recs, hessian, mse = self.forward(
             x, mu_q, sigma_q, self.config["train_samples"]
         )
@@ -215,7 +217,9 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         hessian = self.laplace.average_hessian_samples(hessian, self.constant)
 
         if self.config["update_hessian"]:
-            self.hessian = float(self.config["hessian_memory_factor"]) * self.hessian + hessian
+            self.hessian = (
+                float(self.config["hessian_memory_factor"]) * self.hessian + hessian
+            )
         else:
             self.hessian = (
                 1 - self.config["hessian_memory_factor"]
@@ -273,7 +277,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             self.logger.experiment.add_image(
                 "train/mean_recons_images", img_grid, self.current_epoch
             )
-            sigma = abs(torch.stack(x_recs).var(dim=0)+1e-5).sqrt()
+            sigma = abs(torch.stack(x_recs).var(dim=0) + 1e-5).sqrt()
             sigma = sigma.view(b, c, h, w)
 
             img_grid = torch.clamp(torchvision.utils.make_grid(sigma[:4]), 0, 1)
@@ -289,7 +293,9 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
         x, y = val_batch
         b, c, h, w = x.shape
 
-        sigma_q = self.laplace.posterior_scale(self.hessian, self.hessian_scale, self.prior_prec)
+        sigma_q = self.laplace.posterior_scale(
+            self.hessian, self.hessian_scale, self.prior_prec
+        )
         mu_q = parameters_to_vector(self.net.parameters()).unsqueeze(1)
         regularizer = self.weight_decay(mu_q, self.prior_prec)
         x_recs, _, mse = self.forward(
@@ -321,7 +327,7 @@ class LitLaplaceAutoEncoder(pl.LightningModule):
             self.logger.experiment.add_image(
                 "val/mean_recons_images", img_grid, self.current_epoch
             )
-            sigma = abs(torch.stack(x_recs).var(dim=0)+1e-5).sqrt()
+            sigma = abs(torch.stack(x_recs).var(dim=0) + 1e-5).sqrt()
             sigma = sigma.view(b, c, h, w)
 
             img_grid = torch.clamp(torchvision.utils.make_grid(sigma[:4]), 0, 1)
@@ -367,16 +373,18 @@ def inference_on_dataset(net, samples, val_loader, latent_dim):
                     x_reci += x_rec
                     x_reci_2 += x_rec**2
 
-                likelihood_running_sum += F.mse_loss(x_rec.view(*xi.shape), xi, reduction="sum")
+                likelihood_running_sum += F.mse_loss(
+                    x_rec.view(*xi.shape), xi, reduction="sum"
+                )
 
             z_i = torch.cat(z_i)
 
             # ave[[rage over network samples
             x_reci_mu = x_reci / len(samples)
-            x_reci_sigma = abs(x_reci_2 / len(samples) - x_reci_mu**2 +1e-5).sqrt()
+            x_reci_sigma = abs(x_reci_2 / len(samples) - x_reci_mu**2 + 1e-5).sqrt()
             z_i_mu = torch.mean(z_i, dim=0)
-            z_i_sigma = abs(torch.var(z_i, dim=0) +1e-5).sqrt()
-            
+            z_i_sigma = abs(torch.var(z_i, dim=0) + 1e-5).sqrt()
+
             # append to list
             x_rec_mu += [x_reci_mu]
             x_rec_sigma += [x_reci_sigma]
@@ -432,7 +440,7 @@ def inference_on_latent_grid(net_original, samples, z_mu, latent_dim, dummy):
 
         net = deepcopy(net_original)
         replace_hook = net[latent_dim].register_forward_pre_hook(modify_input(z_grid))
-        
+
         with torch.inference_mode():
 
             pred = None
@@ -452,8 +460,8 @@ def inference_on_latent_grid(net_original, samples, z_mu, latent_dim, dummy):
                     pred2 += x_rec**2
 
             mu_rec_grid = pred.cpu() / len(samples)
-            sigma_rec_grid = (pred2.cpu() / len(samples) - mu_rec_grid**2)
-            sigma_rec_grid = abs(sigma_rec_grid +1e-5).sqrt()
+            sigma_rec_grid = pred2.cpu() / len(samples) - mu_rec_grid**2
+            sigma_rec_grid = abs(sigma_rec_grid + 1e-5).sqrt()
 
         all_f_mu += [mu_rec_grid]
         all_f_sigma += [sigma_rec_grid]
@@ -463,7 +471,7 @@ def inference_on_latent_grid(net_original, samples, z_mu, latent_dim, dummy):
     f_sigma = torch.stack(all_f_sigma)
 
     # average over samples
-    sigma_vector = np.reshape(f_sigma, (n_points_axis*n_points_axis, -1)).mean(axis=1)
+    sigma_vector = np.reshape(f_sigma, (n_points_axis * n_points_axis, -1)).mean(axis=1)
 
     # average over diagonal elements
     sigma_vector = sigma_vector.view(n_points_axis**2, -1).mean(axis=1)
@@ -475,7 +483,7 @@ def test_lae(config, batch_size=1):
 
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    name = "lae_posthoc" if config['posthoc'] else "lae_elbo"
+    name = "lae_posthoc" if config["posthoc"] else "lae_elbo"
     path = f"{config['dataset']}/{name}/{config['exp_name']}"
 
     latent_size = config["latent_size"]
@@ -485,21 +493,21 @@ def test_lae(config, batch_size=1):
     net = get_model(encoder, decoder).eval().to(device)
     net.load_state_dict(torch.load(f"../weights/{path}/net.pth"))
     print(f"==> load weights from ../weights/{path}/net.pth")
-    
+
     laplace = laplace_methods[config["approximation"]]()
-    hessian_scale =  torch.tensor(float(config["hessian_scale"]))
+    hessian_scale = torch.tensor(float(config["hessian_scale"]))
 
     h = torch.load(f"../weights/{path}/hessian.pth")
     if os.path.isfile(f"../weights/{path}/prior_prec.pth"):
         prior_prec = torch.load(f"../weights/{path}/prior_prec.pth")
     else:
-    #    mu_q = parameters_to_vector(net.parameters())
-    #    prior_prec = optimize_prior_precision(mu_q, h * hessian_scale, torch.tensor(config["prior_precision"]))
-    #    torch.save(prior_prec, f"../weights/{path}/prior_prec.pth")
+        #    mu_q = parameters_to_vector(net.parameters())
+        #    prior_prec = optimize_prior_precision(mu_q, h * hessian_scale, torch.tensor(config["prior_precision"]))
+        #    torch.save(prior_prec, f"../weights/{path}/prior_prec.pth")
         prior_prec = config["prior_precision"]
 
     sigma_q = laplace.posterior_scale(h, hessian_scale, prior_prec)
-    
+
     # draw samples from the nn (sample nn)
     mu_q = parameters_to_vector(net.parameters()).unsqueeze(1)
     samples = laplace.sample(mu_q, sigma_q, n_samples=config["test_samples"])
@@ -507,7 +515,7 @@ def test_lae(config, batch_size=1):
     train_loader, val_loader = get_data(
         config["dataset"], batch_size, config["missing_data_imputation"]
     )
-    
+
     # evaluate on dataset
     (
         x,
@@ -519,7 +527,6 @@ def test_lae(config, batch_size=1):
         mse,
         likelihood,
     ) = inference_on_dataset(net, samples, val_loader, latent_dim)
-
 
     # evaluate on latent grid representation
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
@@ -640,7 +647,8 @@ def train_lae(config):
 def log_likelihood(loss, n_data, n_output):
     sigma_noise = 1
     c = n_data * n_output * log(sigma_noise * sqrt(2 * pi))
-    return - loss - c
+    return -loss - c
+
 
 def log_det_ratio(hessian, prior_prec):
     posterior_precision = hessian + prior_prec
@@ -648,16 +656,21 @@ def log_det_ratio(hessian, prior_prec):
     log_det_posterior_precision = posterior_precision.log().sum()
     return log_det_posterior_precision - log_det_prior_precision
 
+
 def scatter(mu_q, prior_precision_diag):
     return (mu_q * prior_precision_diag) @ mu_q
 
+
 def log_marginal_likelihood(mu_q, hessian, prior_prec):
     # we ignore neg log likelihood as it is constant wrt prior_prec
-    neg_log_marglik = - 0.5 * (log_det_ratio(hessian, prior_prec) + scatter(mu_q, prior_prec))
+    neg_log_marglik = -0.5 * (
+        log_det_ratio(hessian, prior_prec) + scatter(mu_q, prior_prec)
+    )
     return neg_log_marglik
 
+
 def optimize_prior_precision(mu_q, hessian, prior_prec, n_steps=100):
-    
+
     log_prior_prec = prior_prec.log()
     log_prior_prec.requires_grad = True
     optimizer = torch.optim.Adam([log_prior_prec], lr=1e-1)
@@ -668,9 +681,10 @@ def optimize_prior_precision(mu_q, hessian, prior_prec, n_steps=100):
         neg_log_marglik.backward()
         optimizer.step()
 
-    prior_prec = log_prior_prec.detach().exp()    
+    prior_prec = log_prior_prec.detach().exp()
 
     return prior_prec
+
 
 def fit_lae(config):
 
@@ -684,24 +698,31 @@ def fit_lae(config):
     )  # hola frederik :) can you fix this shit?
 
     latent_size = config["latent_size"]
-    
+
     encoder = get_encoder(config, latent_size)
     decoder = get_decoder(config, latent_size)
-    
-    basename = "/".join(config['exp_name'].split("/")[:-1])
-    exp_name = "]_".join([n for n in config['exp_name'].split("/")[-1].split("]_") if "approximation" not in n and "backend" not in n])
+
+    basename = "/".join(config["exp_name"].split("/")[:-1])
+    exp_name = "]_".join(
+        [
+            n
+            for n in config["exp_name"].split("/")[-1].split("]_")
+            if "approximation" not in n and "backend" not in n
+        ]
+    )
     exp_name = f"{basename}/{exp_name}"
-    
+
     path = f"../weights/{config['dataset']}/ae_[use_var_dec=False]/{exp_name}"
     encoder.load_state_dict(torch.load(f"{path}/encoder.pth"))
     decoder.load_state_dict(torch.load(f"{path}/mu_decoder.pth"))
     print(f"==> load weights from {path}/encoder.pth")
-    
+
     net = get_model(encoder, decoder).to(device)
     net.eval()
-    
+
     hessian = None
     feature_maps = []
+
     def fw_hook_get_latent(module, input, output):
         feature_maps.append(output.detach())
 
@@ -709,7 +730,7 @@ def fit_lae(config):
         net[k].register_forward_hook(fw_hook_get_latent)
 
     HessianCalculator = lw.MseHessianCalculator(config["approximation"])
-    
+
     for X, y in tqdm(train_loader):
         X = X.to(device)
         with torch.inference_mode():
@@ -719,14 +740,12 @@ def fit_lae(config):
 
         if hessian is None:
             hessian = h_s
-            loss = F.mse_loss(x_rec, X.view(x_rec.shape[0],-1))
         else:
             hessian += h_s
-            loss += F.mse_loss(x_rec, X.view(x_rec.shape[0],-1))
-    
+
     mu_q = parameters_to_vector(net.parameters())
     prior_prec = optimize_prior_precision(mu_q, hessian, torch.tensor(1))
-    
+
     # save weights
     path = f"{config['dataset']}/lae_posthoc/{config['exp_name']}"
     os.makedirs(f"../weights/{path}", exist_ok=True)
@@ -737,6 +756,7 @@ def fit_lae(config):
 
     with open(f"../weights/{path}/config.yaml", "w") as outfile:
         yaml.dump(config, outfile, default_flow_style=False)
+
 
 if __name__ == "__main__":
 
@@ -763,13 +783,13 @@ if __name__ == "__main__":
 
     print(json.dumps(config, indent=4))
     config["exp_name"] = create_exp_name(config)
-    
+
     # train or load auto encoder
     if config["train"] and not config["posthoc"]:
         train_lae(config)
-    
+
     # fit laplace approximation post-hoc
-    elif config["train"] and config["posthoc"] :
+    elif config["train"] and config["posthoc"]:
         fit_lae(config)
 
     test_lae(config)

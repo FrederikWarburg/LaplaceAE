@@ -92,7 +92,7 @@ class LitVariationalAutoEncoder(pl.LightningModule):
 
         # kl term
         kl = -0.5 * torch.sum(1 + torch.log(z_sigma**2) - z_mu**2 - z_sigma**2)
-        
+
         self.log("train_loss", rec + self.alpha * kl)
         self.log("reconstruciton_loss", rec)
         self.log("kl_loss", kl)
@@ -123,7 +123,7 @@ class LitVariationalAutoEncoder(pl.LightningModule):
 
         # kl term
         kl = -0.5 * torch.sum(1 + torch.log(z_sigma**2) - z_mu**2 - z_sigma**2)
-        
+
         self.log("val_loss", rec + self.alpha * kl)
         self.log("val_reconstruciton_loss", rec)
         self.log("val_kl_loss", kl)
@@ -272,7 +272,7 @@ def inference_on_latent_grid(mu_decoder, var_decoder, z_mu, device):
     f_sigma = torch.cat(all_f_sigma, dim=0)
 
     # get diagonal elements
-    sigma_vector = np.reshape(f_sigma, (n_points_axis*n_points_axis, -1)).mean(axis=1)
+    sigma_vector = np.reshape(f_sigma, (n_points_axis * n_points_axis, -1)).mean(axis=1)
 
     return xg_mesh, yg_mesh, sigma_vector, n_points_axis
 

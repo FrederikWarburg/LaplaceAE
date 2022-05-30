@@ -19,6 +19,8 @@ def plot_latent_space(
     sigma_vector=None,
     n_points_axis=None,
 ):
+    if z.ndim > 2:
+        z = z.reshape(z.shape[0], -1)
 
     N, dim = z.shape
     if dim > 2:
@@ -142,7 +144,7 @@ def plot_ood_distributions(path, sigma, ood_sigma, name=""):
 
 
 def compute_and_plot_roc_curves(path, id_sigma, ood_sigma, pre_fix=""):
-    
+
     id_sigma = np.reshape(id_sigma, (id_sigma.shape[0], -1))
     ood_sigma = np.reshape(ood_sigma, (ood_sigma.shape[0], -1))
 

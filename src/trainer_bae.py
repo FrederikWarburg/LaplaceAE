@@ -21,7 +21,7 @@ from visualizer import (
     plot_ood_distributions,
     compute_and_plot_roc_curves,
     plot_latent_space_ood,
-    save_metric
+    save_metric,
 )
 from datetime import datetime
 import json
@@ -124,7 +124,9 @@ class LitAutoEncoder(pl.LightningModule):
 def inference_on_dataset(net, val_loader, samples, device):
 
     x, z_mu, z_sigma, x_rec_mu, x_rec_sigma, labels = [], [], [], [], [], []
-    kl_weight = 1/float(len(val_loader)) if config["kl_weight"] < 0 else config["kl_weight"]
+    kl_weight = (
+        1 / float(len(val_loader)) if config["kl_weight"] < 0 else config["kl_weight"]
+    )
     for i, (xi, yi) in tqdm(enumerate(val_loader)):
         b, c, h, w = xi.shape
         xi = xi.view(b, -1)
@@ -183,7 +185,7 @@ def inference_on_latent_grid(net, z, samples, device):
     f_sigma = torch.cat(all_f_sigma, dim=0)
 
     # get diagonal elements
-    sigma_vector = np.reshape(f_sigma, (n_points_axis*n_points_axis, -1)).mean(axis=1)
+    sigma_vector = np.reshape(f_sigma, (n_points_axis * n_points_axis, -1)).mean(axis=1)
 
     return xg_mesh, yg_mesh, sigma_vector, n_points_axis
 

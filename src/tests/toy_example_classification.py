@@ -20,15 +20,15 @@ from stochman import nnj
 
 
 def create_dataset():
-    
+
     N = 1000
     X = np.random.rand(N, 2)
     y = np.zeros(N)
-    y[X[:,0]>0.5] = 1
-    y[X[:,1]>0.5] += 1
+    y[X[:, 0] > 0.5] = 1
+    y[X[:, 1] > 0.5] += 1
 
     for i in np.unique(y):
-        plt.plot(X[y==i,0], X[y==i,1], ".")
+        plt.plot(X[y == i, 0], X[y == i, 1], ".")
 
     X = torch.tensor(X).type(torch.float)
     y = torch.tensor(y).type(torch.long)
@@ -157,9 +157,9 @@ def compute_hessian_laplace_redux(model, dataloader):
 
 
 def compute_hessian_ours(dataloader, net):
- 
-    hessian_calculator = lw.CrossEntropyHessianCalculator("exact")    
- 
+
+    hessian_calculator = lw.CrossEntropyHessianCalculator("exact")
+
     feature_maps = []
 
     def fw_hook_get_latent(module, input, output):

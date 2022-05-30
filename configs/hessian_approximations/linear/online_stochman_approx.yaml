@@ -4,7 +4,7 @@ exp_name : "hessian_approx/"
 # training
 train : True
 posthoc : False
-alpha : 0.0001
+alpha : 0
 train_samples: 1
 prior_precision: 1
 
@@ -26,7 +26,7 @@ latent_size : 2
 # hessian
 backend : "layer" 
 approximation : "approx" #block, exact, diag, mix
-hessian_memory_factor : 0.99
+hessian_memory_factor : 0.999
 one_hessian_per_sampling : False
 update_hessian : True
 hessian_scale : 1

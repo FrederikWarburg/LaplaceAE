@@ -146,7 +146,7 @@ class CrossEntropyHessianCalculator(HessianCalculator):
 
     def __call__(self, net, feature_maps, x, *args, **kwargs):
         pred = feature_maps[-1]
-        
+
         if pred.ndim == 5:
             bs, classes, c, h, w = pred.shape
             output_size = c * h * w
@@ -170,8 +170,8 @@ class CrossEntropyHessianCalculator(HessianCalculator):
             for b in range(bs):
                 blocks = torch.chunk(prob[b], output_size)
                 blocks = [
-                    torch.diag_embed(block, dim1=-1, dim2=-2) - 
-                    torch.einsum("c,d->cd", block, block)
+                    torch.diag_embed(block, dim1=-1, dim2=-2)
+                    - torch.einsum("c,d->cd", block, block)
                     for block in blocks
                 ]
                 tmp[b] = torch.block_diag(*blocks)

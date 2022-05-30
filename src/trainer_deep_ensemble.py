@@ -30,7 +30,7 @@ def inference_on_dataset(encoders, mu_decoders, val_loader, device):
         xi = xi.to(device)
 
         zi_sum, x_reci_sum, x_reci_sum2 = None, None, None
-        
+
         for m_idx in range(num_models):
             with torch.inference_mode():
                 zi = encoders[m_idx](xi)
@@ -39,16 +39,20 @@ def inference_on_dataset(encoders, mu_decoders, val_loader, device):
             if zi_sum is None:
                 zi_sum = zi
                 x_reci_sum = x_reci
-                x_reci_sum2 = x_reci ** 2
+                x_reci_sum2 = x_reci**2
             else:
                 zi_sum += zi
                 x_reci_sum += x_reci
-                x_reci_sum2 += x_reci ** 2
-            
+                x_reci_sum2 += x_reci**2
+
         x += [xi.view(b, c, h, w).cpu()]
         x_reci_avg = x_reci.view(b, c, h, w).cpu() / num_models
         x_rec_mu += [x_reci_sum]
-        x_rec_sigma += [torch.sqrt(abs(x_reci_sum2.view(b, c, h, w).cpu() / num_models - x_reci_avg ** 2))]
+        x_rec_sigma += [
+            torch.sqrt(
+                abs(x_reci_sum2.view(b, c, h, w).cpu() / num_models - x_reci_avg**2)
+            )
+        ]
         z += [zi.cpu() / num_models]
         labels += [yi]
 
@@ -80,12 +84,14 @@ def inference_on_latent_grid(mu_decoders, z, device):
                 mu_rec_grid = mu_decoders[m_idx](z_grid)
                 if mu_rec_grid_sum is None:
                     mu_rec_grid_sum = mu_rec_grid
-                    mu_rec_grid_sum2 = mu_rec_grid ** 2
+                    mu_rec_grid_sum2 = mu_rec_grid**2
                 else:
                     mu_rec_grid_sum += mu_rec_grid
-                    mu_rec_grid_sum2 += mu_rec_grid ** 2
+                    mu_rec_grid_sum2 += mu_rec_grid**2
         mu_rec_grid_avg = mu_rec_grid_sum / num_models
-        sigma_rec_grid = torch.sqrt(abs(mu_rec_grid_sum2 / num_models - mu_rec_grid_avg ** 2))
+        sigma_rec_grid = torch.sqrt(
+            abs(mu_rec_grid_sum2 / num_models - mu_rec_grid_avg**2)
+        )
 
         all_f_mu += [mu_rec_grid.cpu()]
         all_f_sigma += [sigma_rec_grid.cpu()]
@@ -94,7 +100,7 @@ def inference_on_latent_grid(mu_decoders, z, device):
     f_sigma = torch.cat(all_f_sigma, dim=0)
 
     # get diagonal elements
-    sigma_vector = np.reshape(f_sigma, (n_points_axis*n_points_axis, -1)).mean(axis=1)
+    sigma_vector = np.reshape(f_sigma, (n_points_axis * n_points_axis, -1)).mean(axis=1)
 
     return xg_mesh, yg_mesh, sigma_vector, n_points_axis
 
@@ -103,11 +109,9 @@ def compute_likelihood(x, x_rec, sigma_rec):
 
     # reconstruction term:
     likelihood = (
-        (
-            (x_rec.reshape(*x.shape) - x) / sigma_rec.reshape(*x.shape)
-        ) ** 2
+        ((x_rec.reshape(*x.shape) - x) / sigma_rec.reshape(*x.shape)) ** 2
         + np.log(sigma_rec).reshape(*x.shape)
-        ).mean(axis=(1, 2, 3))
+    ).mean(axis=(1, 2, 3))
 
     return likelihood.reshape(-1, 1)
 
@@ -119,10 +123,13 @@ def test_ae_ensemble(config):
     versions = config["versions"]
     for v in versions:
         config_v = deepcopy(config)
-        config_v['exp_name'] = f"{config_v['exp_name']}/{v}"
+        config_v["exp_name"] = f"{config_v['exp_name']}/{v}"
         config_v["exp_name"] = create_exp_name(config_v)
         paths.append()
-    paths = [f"{config['dataset']}/ae_[use_var_dec={config['use_var_decoder']}]/{config['exp_name']}" for v in versions]
+    paths = [
+        f"{config['dataset']}/ae_[use_var_dec={config['use_var_decoder']}]/{config['exp_name']}"
+        for v in versions
+    ]
 
     latent_size = config["latent_size"]
     encoders, mu_decoders = [], []
@@ -142,7 +149,7 @@ def test_ae_ensemble(config):
     x, z, x_rec_mu, x_rec_sigma, labels = inference_on_dataset(
         encoders, mu_decoders, val_loader, device
     )
-        
+
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
         mu_decoders,
         z,
@@ -167,13 +174,9 @@ def test_ae_ensemble(config):
             ood_x_rec_mu,
             ood_x_rec_sigma,
             ood_labels,
-        ) = inference_on_dataset(
-            encoders, mu_decoders, ood_val_loader, device
-        )
+        ) = inference_on_dataset(encoders, mu_decoders, ood_val_loader, device)
 
-        plot_reconstructions(
-            path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_"
-        )
+        plot_reconstructions(path, ood_x, ood_x_rec_mu, ood_x_rec_sigma, pre_fix="ood_")
 
         likelihood_in = compute_likelihood(x, x_rec_mu, x_rec_sigma)
         likelihood_out = compute_likelihood(ood_x, ood_x_rec_mu, ood_x_rec_sigma)
@@ -229,7 +232,7 @@ if __name__ == "__main__":
     with open(args.config) as file:
         config = yaml.full_load(file)
 
-    exp_name = config['exp_name'] 
+    exp_name = config["exp_name"]
 
     print(json.dumps(config, indent=4))
 

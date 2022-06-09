@@ -1,0 +1,11 @@
+batch_size: 50
+dataset: celeba
+exp_name: ood_experiment/[no_conv_False]_[use_var_decoder_False]_
+latent_size: 128
+learning_rate: 1e-4
+no_conv: false
+ood: true
+ood_dataset: celeba
+pretrained: false
+train: true
+use_var_decoder: false

@@ -1,0 +1,15 @@
+approximation: mix
+backend: layer
+batch_size: 100
+dataset: mnist
+exp_name: eval_approx_strategies/[backend_layer]_[approximation_mix]_[no_conv_False]_[train_samples_10]_
+kl_weight: 1e-6
+latent_size: 2
+missing_data_imputation: false
+no_conv: false
+ood: true
+ood_dataset: kmnist
+pretrained: false
+test_samples: 100
+train: true
+train_samples: 10

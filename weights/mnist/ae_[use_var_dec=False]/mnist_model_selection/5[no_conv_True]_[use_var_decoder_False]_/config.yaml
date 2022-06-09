@@ -1,0 +1,10 @@
+batch_size: 50
+dataset: mnist
+exp_name: mnist_model_selection//5[no_conv_True]_[use_var_decoder_False]_
+latent_size: 2
+no_conv: true
+ood: false
+ood_dataset: mnist
+pretrained: false
+train: true
+use_var_decoder: false

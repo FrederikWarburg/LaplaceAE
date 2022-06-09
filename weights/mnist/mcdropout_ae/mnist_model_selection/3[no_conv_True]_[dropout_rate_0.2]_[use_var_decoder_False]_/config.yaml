@@ -1,0 +1,12 @@
+batch_size: 50
+dataset: mnist
+dropout_rate: 0.2
+exp_name: mnist_model_selection//3[no_conv_True]_[dropout_rate_0.2]_[use_var_decoder_False]_
+latent_size: 2
+no_conv: true
+ood: false
+ood_dataset: mnist
+pretrained: false
+test_samples: 100
+train: true
+use_var_decoder: false

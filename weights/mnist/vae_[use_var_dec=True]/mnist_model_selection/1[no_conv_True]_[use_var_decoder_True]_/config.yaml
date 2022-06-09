@@ -1,0 +1,12 @@
+batch_size: 50
+dataset: mnist
+exp_name: mnist_model_selection//1[no_conv_True]_[use_var_decoder_True]_
+kl_weight: 0.0001
+latent_size: 2
+missing_data_imputation: false
+no_conv: true
+ood: false
+ood_dataset: mnist
+pretrained: false
+train: true
+use_var_decoder: true

@@ -20,11 +20,11 @@ We put a Gaussian distribution over the weights of both the encoder and the deco
 
 
 ##  Sampling-based online training
-Our work is inspired by the Laplace approximation, where a Gaussian distribution is place over the parameters. This Gaussian's covariance is the inverse of the second order derivate. We propose an online-sampling based training procedure, where we recursively sample a NN, compute the gradient and second order gradient, which we use to update the covariance estimate and mean parameters.
+Our work is inspired by the Laplace approximation, where a Gaussian distribution is placed over the parameters. This Gaussian's covariance is the inverse of the second order derivate. We propose an online-sampling based training procedure, where we recursively sample NNs, compute the first and second order gradient, which we use to update the covariance estimate and mean parameters.
 ![](figures/readme/sampling_based_training.png)
 
 ## Hessian approximations
-We propose two new approximations of the Generalized Gauss Newton approximation, namely ***approx*** and ***mix***. These approximations enable computation of the hessian on large images. The chosen approximations can be specified from the config files.
+We propose two new approximations of the Generalized Gauss Newton (GGN) approximation, namely ***approx*** and ***mix***. These approximations enable computation of the hessian on large images. The chosen approximations can be specified from the config files.
 ![](figures/readme/hessian_approximation.png)
 
 ## Setup

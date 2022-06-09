@@ -1,0 +1,10 @@
+batch_size: 200
+dataset: cifar10
+exp_name: ood_experiment/[no_conv_False]_
+latent_size: 512
+no_conv: false
+ood: true
+ood_dataset: svhn
+pretrained: false
+train: true
+use_var_decoder: false

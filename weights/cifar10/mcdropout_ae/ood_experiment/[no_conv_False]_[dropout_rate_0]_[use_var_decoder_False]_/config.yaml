@@ -1,0 +1,13 @@
+batch_size: 50
+dataset: cifar10
+dropout_rate: 0
+exp_name: ood_experiment/[no_conv_False]_[dropout_rate_0]_[use_var_decoder_False]_
+latent_size: 512
+learning_rate: 1e-4
+no_conv: false
+ood: true
+ood_dataset: svhn
+pretrained: false
+test_samples: 100
+train: true
+use_var_decoder: false

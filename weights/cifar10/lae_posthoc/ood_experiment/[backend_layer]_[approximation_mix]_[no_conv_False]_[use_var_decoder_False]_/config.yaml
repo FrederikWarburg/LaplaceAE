@@ -1,0 +1,15 @@
+approximation: mix
+backend: layer
+batch_size: 1
+dataset: cifar10
+exp_name: ood_experiment/[backend_layer]_[approximation_mix]_[no_conv_False]_[use_var_decoder_False]_
+latent_size: 512
+no_conv: false
+ood: true
+ood_dataset: svhn
+posthoc: true
+pretrained: false
+test_samples: 100
+train: false
+use_la_encoder: true
+use_var_decoder: false

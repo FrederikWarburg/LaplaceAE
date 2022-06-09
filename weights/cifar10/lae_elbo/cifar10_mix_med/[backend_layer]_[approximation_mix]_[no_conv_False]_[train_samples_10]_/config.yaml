@@ -1,0 +1,17 @@
+approximation: mix
+backend: layer
+batch_size: 50
+dataset: cifar10
+exp_name: cifar10_mix_med/[backend_layer]_[approximation_mix]_[no_conv_False]_[train_samples_10]_
+hessian_memory_factor: 0.8
+kl_weight: 1e-6
+latent_size: 128
+missing_data_imputation: false
+no_conv: false
+one_hessian_per_sampling: true
+ood: false
+ood_dataset: kmnist
+pretrained: false
+test_samples: 100
+train: true
+train_samples: 10

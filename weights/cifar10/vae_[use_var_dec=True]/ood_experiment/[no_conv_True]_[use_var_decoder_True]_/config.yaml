@@ -1,0 +1,13 @@
+batch_size: 50
+dataset: cifar10
+exp_name: ood_experiment/[no_conv_True]_[use_var_decoder_True]_
+kl_weight: 1.0e-06
+latent_size: 128
+learning_rate: 1e-4
+missing_data_imputation: false
+no_conv: true
+ood: true
+ood_dataset: svhn
+pretrained: false
+train: true
+use_var_decoder: true

@@ -1,0 +1,11 @@
+batch_size: 50
+dataset: mnist
+exp_name: ood_experiment/[no_conv_True]_[use_var_decoder_True]_
+kl_weight: 0.0001
+latent_size: 2
+no_conv: true
+ood: true
+ood_dataset: kmnist
+pretrained: false
+train: true
+use_var_decoder: true

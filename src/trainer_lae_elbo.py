@@ -1,6 +1,5 @@
-from builtins import breakpoint
+
 import os
-from sched import scheduler
 
 import torch
 from torch import nn
@@ -513,7 +512,7 @@ def test_lae(config, batch_size=1):
     samples = laplace.sample(mu_q, sigma_q, n_samples=config["test_samples"])
 
     train_loader, val_loader = get_data(
-        config["dataset"], batch_size, config["missing_data_imputation"]
+        config["dataset"], batch_size
     )
 
     # evaluate on dataset
@@ -556,7 +555,7 @@ def test_lae(config, batch_size=1):
 
     # evaluate on OOD dataset
     if config["ood"]:
-        assert not config["missing_data_imputation"]
+        
         _, ood_val_loader = get_data(config["ood_dataset"], batch_size)
 
         (

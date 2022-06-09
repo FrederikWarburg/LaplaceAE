@@ -1,27 +1,14 @@
-from builtins import breakpoint
-from multiprocessing import reduction
 import sys
 
 sys.path.append("../")
-import os
+
 import torch
 from torch import nn
-import json
-from torch.nn import functional as F
-from tqdm import tqdm
-from datetime import datetime
 from data import get_data
 from models import get_encoder, get_decoder
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from copy import deepcopy
-import torchvision
-import torch.nn.functional as F
-import yaml
-from math import sqrt, pi, log
-import numpy as np
 from hessian import laplace
-import cv2
-import matplotlib.pyplot as plt
 from helpers import BaseImputation
 
 laplace_methods = {
@@ -47,7 +34,7 @@ class LAEImputation(BaseImputation):
     def __init__(self, config, device):
         super().__init__(config, device)
 
-        self.model = "lae_elbo"
+        self.model = "/".join(config['path'].split("/")[1:])
 
         path = f"{config['path']}"
 
@@ -154,7 +141,7 @@ def main(config):
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-    _, val_loader = get_data(config["dataset"], 1, config["missing_data_imputation"])
+    _, val_loader = get_data(config["dataset"], 1, root_dir = "../../data/")
 
     FromNoise(config, device).compute(val_loader)
     FromHalf(config, device).compute(val_loader)
@@ -163,22 +150,18 @@ def main(config):
 
 if __name__ == "__main__":
 
-    # celeba
-    # path = "celeba/lae_elbo/[backend_layer]_[approximation_mix]_[no_conv_False]_[train_samples_1]_"
-
     # mnist
-    path = "mnist/lae_elbo/hessian_approx/[backend_layer]_[approximation_exact]_[no_conv_True]_[train_samples_1]_"
+    path = "mnist/lae_elbo/ood_experiment/[backend_layer]_[approximation_exact]_[no_conv_True]_[train_samples_1]_"
 
     config = {
-        "dataset": "mnist",  # "mnist", #"celeba",
+        "dataset": "mnist",  
         "prior_precision": 1,
         "path": path,
-        "no_conv": True,  # False
+        "no_conv": True,  
         "test_samples": 10,
-        "approximation": "exact",  # "mix",
+        "approximation": "exact", 
         "hessian_scale": 1,
-        "latent_size": 2,  # 128
-        "missing_data_imputation": False,
+        "latent_size": 2, 
     }
 
     main(config)

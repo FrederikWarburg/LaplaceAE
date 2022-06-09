@@ -1,11 +1,8 @@
-from builtins import breakpoint
+
 import os
 import torch
-from torch import nn
-from torch.nn import functional as F
 from tqdm import tqdm
 import numpy as np
-import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
@@ -14,7 +11,6 @@ import yaml
 import argparse
 from data import get_data, generate_latent_grid
 from models.fashionmnist_bbb import BayesianAE
-from utils import softclip
 from visualizer import (
     plot_reconstructions,
     plot_latent_space,

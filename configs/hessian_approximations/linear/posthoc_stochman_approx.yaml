@@ -8,7 +8,6 @@ posthoc : True
 # test
 ood : True
 test_samples: 100
-missing_data_imputation: False
 
 # data
 dataset : "mnist"

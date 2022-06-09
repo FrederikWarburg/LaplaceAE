@@ -1,4 +1,3 @@
-from builtins import breakpoint
 import os
 import torch
 import tqdm
@@ -8,7 +7,6 @@ import argparse
 from copy import deepcopy
 from data import get_data, generate_latent_grid
 from models import get_encoder, get_decoder
-from utils import softclip
 from visualizer import (
     plot_reconstructions,
     plot_latent_space,
@@ -16,7 +14,6 @@ from visualizer import (
     compute_and_plot_roc_curves,
     save_metric,
 )
-from datetime import datetime
 import json
 from utils import create_exp_name, compute_typicality_score
 

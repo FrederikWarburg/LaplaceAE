@@ -1,27 +1,11 @@
-from builtins import breakpoint
-from multiprocessing import reduction
 import sys
 
 sys.path.append("../")
-import os
 import torch
 from torch import nn
-import json
-from torch.nn import functional as F
-from tqdm import tqdm
-from datetime import datetime
 from data import get_data
-from models import get_encoder, get_decoder
-from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from copy import deepcopy
-import torchvision
-import torch.nn.functional as F
-import yaml
-from math import sqrt, pi, log
-import numpy as np
 from hessian import laplace
-import cv2
-import matplotlib.pyplot as plt
 from helpers import BaseImputation
 
 laplace_methods = {
@@ -90,7 +74,7 @@ def main(config):
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-    _, val_loader = get_data(config["dataset"], 1, config["missing_data_imputation"])
+    _, val_loader = get_data(config["dataset"], 1, root_dir = "../../data/")
 
     FromNoise(config, device).compute(val_loader)
     FromHalf(config, device).compute(val_loader)
@@ -102,7 +86,6 @@ if __name__ == "__main__":
     config = {
         "dataset": "mnist",  # "mnist", #"celeba",
         "test_samples": 1,
-        "missing_data_imputation": False,
     }
 
     main(config)

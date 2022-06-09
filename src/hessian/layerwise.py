@@ -1,9 +1,6 @@
-from builtins import breakpoint
-import copy
 from abc import abstractmethod
 
 import torch
-from torch.nn.utils import parameters_to_vector
 
 import sys
 import torch.nn.functional as F
@@ -67,7 +64,7 @@ class MseHessianCalculator(HessianCalculator):
         self.method = method  # block, exact, approx, mix
 
     def __call__(self, net, feature_maps, x, *args, **kwargs):
-        # print("call")
+        
         if x.ndim == 4:
             bs, c, h, w = x.shape
             output_size = c * h * w
@@ -126,9 +123,6 @@ class MseHessianCalculator(HessianCalculator):
                     diag_out_h,
                 )
                 t2 += time.time() - t
-
-        # print("wrt weight", t1)
-        # print("wrt input", t2)
 
         if self.method == "block":
             H = [H_layer for H_layer in H]

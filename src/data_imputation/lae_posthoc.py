@@ -1,31 +1,11 @@
-from builtins import breakpoint
-from multiprocessing import reduction
 import sys
 
 sys.path.append("../")
-import os
+
 import torch
-from torch import nn
-import json
-from torch.nn import functional as F
-from tqdm import tqdm
-from datetime import datetime
 from data import get_data
-from models import get_encoder, get_decoder
-from torch.nn.utils import parameters_to_vector, vector_to_parameters
-from copy import deepcopy
-import torchvision
-import torch.nn.functional as F
-import yaml
-from math import sqrt, pi, log
-import numpy as np
-import cv2
-import matplotlib.pyplot as plt
 from utils import load_laplace
 from helpers import BaseImputation
-
-sys.path.append("../../Laplace")
-from laplace.laplace import Laplace
 
 
 class LAEPosthocImputation(BaseImputation):
@@ -118,7 +98,7 @@ def main(config):
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-    _, val_loader = get_data(config["dataset"], 1, config["missing_data_imputation"])
+    _, val_loader = get_data(config["dataset"], 1, root_dir = "../../data/")
 
     FromNoise(config, device).compute(val_loader)
     FromHalf(config, device).compute(val_loader)
@@ -127,17 +107,13 @@ def main(config):
 
 if __name__ == "__main__":
 
-    # celeba
-    # path = "celeba/lae_elbo/[backend_layer]_[approximation_mix]_[no_conv_False]_[train_samples_1]_"
-
     # mnist
     path = "mnist/lae_post_hoc"
 
     config = {
-        "dataset": "mnist",  # "mnist", #"celeba",
+        "dataset": "mnist", 
         "path": path,
         "test_samples": 100,
-        "missing_data_imputation": False,
     }
 
     main(config)

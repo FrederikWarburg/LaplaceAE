@@ -1,27 +1,11 @@
-from builtins import breakpoint
-from multiprocessing import reduction
 import sys
 
 sys.path.append("../")
-import os
+
 import torch
 from torch import nn
-import json
-from torch.nn import functional as F
-from tqdm import tqdm
-from datetime import datetime
 from data import get_data
 from models import get_encoder, get_decoder
-from torch.nn.utils import parameters_to_vector, vector_to_parameters
-from copy import deepcopy
-import torchvision
-import torch.nn.functional as F
-import yaml
-from math import sqrt, pi, log
-import numpy as np
-import cv2
-import matplotlib.pyplot as plt
-from utils import load_laplace
 from helpers import BaseImputation
 
 
@@ -34,7 +18,7 @@ class MCAEPosthocImputation(BaseImputation):
     def __init__(self, config, device):
         super().__init__(config, device)
 
-        self.model = "mcae"
+        self.model = "/".join(config['path'].split("/")[1:])
         self.n_samples = 10
 
         path = f"{config['path']}"
@@ -140,7 +124,7 @@ def main(config):
     # initialize_model
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-    _, val_loader = get_data(config["dataset"], 1, config["missing_data_imputation"])
+    _, val_loader = get_data(config["dataset"], 1, root_dir = "../../data/")
 
     FromNoise(config, device).compute(val_loader)
     FromHalf(config, device).compute(val_loader)
@@ -149,9 +133,6 @@ def main(config):
 
 if __name__ == "__main__":
 
-    # celeba
-    # path = "celeba/lae_elbo/[backend_layer]_[approximation_mix]_[no_conv_False]_[train_samples_1]_"
-
     # mnist
     path = "mnist/mcdropout_ae/mnist_model_selection/1[no_conv_True]_[dropout_rate_0.2]_[use_var_decoder_False]_"
 
@@ -159,7 +140,6 @@ if __name__ == "__main__":
         "dataset": "mnist",  # "mnist", #"celeba",
         "path": path,
         "test_samples": 100,
-        "missing_data_imputation": False,
         "no_conv": True,
         "latent_size": 2,
         "dropout_rate": 0.2,

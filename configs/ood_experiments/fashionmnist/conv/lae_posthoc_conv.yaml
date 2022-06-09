@@ -1,0 +1,28 @@
+
+# experiment name
+exp_name : "ood_experiment/"
+
+# training
+train : False
+posthoc : True
+
+# test
+ood : True
+test_samples: 50
+
+# data
+dataset : "fashionmnist"
+ood_dataset : "mnist"
+batch_size: 5
+
+# model
+pretrained : False
+no_conv : False
+latent_size : 2
+use_la_encoder : True # this will fit the laplace to both encoder and decoder
+use_var_decoder : False
+
+# hessian
+backend : "layer" 
+approximation : "mix" #block, exact, diag, mix
+hessian_scale : 1

@@ -1,0 +1,21 @@
+# experiment name
+exp_name : "ood_experiment/"
+
+# training
+train : True
+
+# test
+ood : True
+test_samples: 100
+
+# data
+dataset : "mnist"
+ood_dataset : "kmnist"
+batch_size: 50
+
+# model
+pretrained : False
+use_var_decoder : False
+no_conv : True
+latent_size : 2
+dropout_rate: 0.2

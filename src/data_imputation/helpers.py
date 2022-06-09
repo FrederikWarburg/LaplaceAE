@@ -1,4 +1,3 @@
-from builtins import breakpoint
 import sys
 
 sys.path.append("../")
@@ -8,21 +7,11 @@ from torch import nn
 import json
 from torch.nn import functional as F
 from tqdm import tqdm
-from datetime import datetime
-from data import get_data
-from models import get_encoder, get_decoder
-from torch.nn.utils import parameters_to_vector, vector_to_parameters
-from copy import deepcopy
-import torchvision
 import torch.nn.functional as F
-import yaml
-from math import sqrt, pi, log
 import numpy as np
-from hessian import laplace
 import cv2
 import matplotlib.pyplot as plt
 from torchmetrics.functional.classification.calibration_error import (
-    _ce_compute,
     _ce_update,
     _binning_bucketize,
 )

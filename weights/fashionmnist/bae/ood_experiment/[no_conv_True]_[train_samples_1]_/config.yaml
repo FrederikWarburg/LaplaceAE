@@ -1,0 +1,12 @@
+batch_size: 50
+dataset: fashionmnist
+exp_name: ood_experiment/[no_conv_True]_[train_samples_1]_
+kl_weight: 1e-6
+latent_size: 2
+no_conv: true
+ood: true
+ood_dataset: mnist
+pretrained: false
+test_samples: 100
+train: true
+train_samples: 1

@@ -1,0 +1,10 @@
+batch_size: 50
+dataset: fashionmnist
+exp_name: ood_experiment/[no_conv_False]_[use_var_decoder_True]_
+latent_size: 2
+no_conv: false
+ood: true
+ood_dataset: mnist
+pretrained: false
+train: true
+use_var_decoder: true

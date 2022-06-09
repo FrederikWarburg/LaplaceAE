@@ -107,7 +107,7 @@ If you use this code, please consider citing our work
 ```bibtex
 @article{LAE2022,
   title={Laplacian Autoencoders for Learning Stochastic Representations},
-  author={Marco Miani and Frederik Warburg and Pablo Moreno-Muñoz, Nicki Skafte Detlefsen, Søren Hauberg},
+  author={Marco Miani and Frederik Warburg and Pablo Moreno-Muñoz and Nicki Skafte Detlefsen and Søren Hauberg},
   journal={CoRR},
   year={2022}
 }

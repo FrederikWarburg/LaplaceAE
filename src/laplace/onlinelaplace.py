@@ -16,7 +16,7 @@ laplace_methods = {
 
 
 class OnlineLaplace:
-    def __init__(self, net, dataset_size, config):
+    def __init__(self, net, dataset_size, config, register_forward_hook = True):
         super(OnlineLaplace, self).__init__()
 
         device = (
@@ -43,13 +43,15 @@ class OnlineLaplace:
             self.net = extend(self.net)
 
         else:
-            self.feature_maps = []
 
-            def fw_hook_get_latent(module, input, output):
-                self.feature_maps.append(output.detach())
+            if register_forward_hook:
+                self.feature_maps = []
 
-            for k in range(len(self.net)):
-                self.net[k].register_forward_hook(fw_hook_get_latent)
+                def fw_hook_get_latent(module, input, output):
+                    self.feature_maps.append(output.detach())
+
+                for k in range(len(self.net)):
+                    self.net[k].register_forward_hook(fw_hook_get_latent)
 
             self.HessianCalculator = lw.MseHessianCalculator(config["approximation"])
             self.laplace = laplace_methods[config["approximation"]]()
@@ -146,9 +148,9 @@ class OnlineLaplace:
         loss = self.constant * mse + self.alpha * regularizer
 
         # store some stuff for loggin purposes
-        self.mse_loss = mse#.detach()
-        self.regularizer_loss = self.alpha * regularizer#.detach()
-        self.x_recs = x_recs#.detach()
+        self.mse_loss = mse
+        self.regularizer_loss = self.alpha * regularizer
+        self.x_recs = x_recs
 
         return loss
 

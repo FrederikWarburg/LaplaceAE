@@ -348,9 +348,9 @@ def test_lae(config, batch_size=1):
         config["dataset"], batch_size
     )
 
-    la = OnlineLaplace(net, len(val_loader.dataset), config)
+    la = OnlineLaplace(net, len(val_loader.dataset), config, register_forward_hook=False)
     la.load_hessian(f"../weights/{path}/hessian.pth")
-    samples = la.sample()
+    samples = la.sample(n_samples=config["test_samples"])
 
     # evaluate on dataset
     (
@@ -363,10 +363,10 @@ def test_lae(config, batch_size=1):
         mse,
         likelihood,
     ) = inference_on_dataset(net, samples, val_loader, latent_dim)
-
+    
     # evaluate on latent grid representation
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
-        deepcopy(net),
+        net,
         samples,
         z_mu,
         latent_dim,
@@ -468,9 +468,8 @@ def train_lae(config):
     # save weights
     path = f"{config['dataset']}/lae_elbo/{config['exp_name']}"
     os.makedirs(f"../weights/{path}", exist_ok=True)
-    torch.save(model.net.state_dict(), f"../weights/{path}/net.pth")
+    torch.save(model.la.net.state_dict(), f"../weights/{path}/net.pth")
     model.la.save_hessian(f"../weights/{path}/hessian.pth")
-    # torch.save(prior_prec, f"../weights/{path}/prior_prec.pth")
     print(f"==> save weights from ../weights/{path}/net.pth")
 
     with open(f"../weights/{path}/config.yaml", "w") as outfile:

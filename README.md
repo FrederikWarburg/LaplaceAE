@@ -39,17 +39,11 @@ conda install pytorch==1.10.1 torchvision==0.11.2 torchaudio==0.10.1 cudatoolkit
 
 # Install package requirements
 pip install -r requirements.txt
-
-# Clone specialized version of stochman
-git clone https://github.com/MachineLearningLifeScience/stochman;
-cd stochman;
-python setup.py install;
 ```
 
 This should give you a folder structure like this:
 
     LAPLACEAE
-    ├── stochman            # Support different hessian computations
     ├── configs             # config files, organised by experiments
     ├── figures             # generated figures
     ├── src                 # source code

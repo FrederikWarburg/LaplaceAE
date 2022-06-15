@@ -165,7 +165,7 @@ class OnlineLaplace:
         return samples
 
     def load_hessian(self, path):
-        self.h = torch.load(path)
+        self.hessian = torch.load(path)
 
     def save_hessian(self, path):
         torch.save(self.hessian, path)

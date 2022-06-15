@@ -48,6 +48,7 @@ This should give you a folder structure like this:
     ├── figures             # generated figures
     ├── src                 # source code
     │   ├── hessian         # Code for computing hessians
+    │   ├── laplace         # Code for online and offline laplace
     │   ├── models          # Model architechtures
     |   ├── utils.py        # helper functions
     |   ├── visualizer.py   # visualization functions

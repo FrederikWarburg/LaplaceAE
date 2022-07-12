@@ -113,8 +113,13 @@ class MseHessianCalculator(HessianCalculator):
                 if h_k is not None:
                     H = [h_k.sum(dim=0)] + H
                 t1 += time.time() - t
-                t = time.time()
+
+                # If we're in the last (first) layer, then skip the input jacobian
+                if k == 0:
+                    break
+
                 # jacobian w.r.t input
+                t = time.time()
                 tmp = net[k]._jacobian_wrt_input_sandwich(
                     feature_maps[k],
                     feature_maps[k + 1],
@@ -204,6 +209,10 @@ class CrossEntropyHessianCalculator(HessianCalculator):
                 if h_k is not None:
                     H = [h_k.sum(dim=0)] + H
 
+                # If we're in the last (first) layer, then skip the input jacobian
+                if k == 0:
+                    break
+
                 # jacobian w.r.t input
                 tmp = net[k]._jacobian_wrt_input_sandwich(
                     feature_maps[k],
@@ -219,3 +228,4 @@ class CrossEntropyHessianCalculator(HessianCalculator):
             H = torch.cat(H, dim=0)
 
         return H
+        

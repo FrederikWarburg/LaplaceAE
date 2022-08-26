@@ -2,7 +2,7 @@
 
 Official code for ***Laplacian Autoencoders for Learning Stochastic Representations*** and the associate baseline methods. 
 
-Paper [INSERT LINK]
+Paper: https://arxiv.org/abs/2206.15078
 
 ![](figures/readme/teaser.png)
 

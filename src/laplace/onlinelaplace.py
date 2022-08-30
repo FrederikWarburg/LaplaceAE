@@ -23,16 +23,16 @@ class OnlineLaplace:
             "cuda:0" if torch.cuda.is_available() else "cpu"
         ) 
 
-        self.alpha = float(config["alpha"])
+        self.alpha = float(config["alpha"]) if "alpha" in config else 0
         self.net = net.to(device)
 
         self.prior_prec = torch.tensor(float(config["prior_precision"])).to(device)
         self.hessian_scale = torch.tensor(float(config["hessian_scale"])).to(device)
         self.dataset_size = dataset_size
-        self.n_samples = config["train_samples"]
-        self.one_hessian_per_sampling = config["one_hessian_per_sampling"]
-        self.update_hessian = config["update_hessian"]
-        self.hessian_memory_factor = float(config["hessian_memory_factor"])
+        self.n_samples = config["train_samples"] if "train_samples" in config else 1
+        self.one_hessian_per_sampling = config["one_hessian_per_sampling"] if "one_hessian_per_sampling" in config else False
+        self.update_hessian = config["update_hessian"] if "update_hessian" in config else True
+        self.hessian_memory_factor = float(config["hessian_memory_factor"]) if "hessian_memory_factor" in config else 0.999
 
         self.sigma_n = 1.0
         self.constant = 1.0 / (2 * self.sigma_n**2)

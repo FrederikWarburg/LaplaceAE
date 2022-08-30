@@ -1,5 +1,5 @@
 # experiment name
-exp_name : "hessian_approx/"
+exp_name : "hessian_approx"
 
 # training
 train : True

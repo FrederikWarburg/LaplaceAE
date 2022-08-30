@@ -17,8 +17,16 @@ from copy import deepcopy
 import json
 from utils import create_exp_name, compute_typicality_score
 
-sys.path.append("../Laplace")
-from laplace2.laplace2 import Laplace
+# Import error likely to occur.
+# The reason is that we need laplace-torch to run this script (used to validate our implementation of of posthoc laplace)
+# In laplace-torch there is also a laplace.Laplace class with the same path
+# this will cause issues with the paths. Most of the posthoc functionality can be found in 
+# the PosthocLaplace class and the trainer_lae_elbo.py file. I would recommend you to use that one.
+# If you want to import laplace-torch, one solution is to clone their repo, and rename all 
+# instances/files from laplace => laplace2. Please submit a pull request if you have better ways 
+# to handle the paths collisions. 
+#sys.path.append("../Laplace")
+#from laplace2.laplace2 import Laplace
 
 # from laplace import Laplace
 from data import get_data, generate_latent_grid

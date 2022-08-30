@@ -1,0 +1,33 @@
+
+# experiment name
+exp_name : "celeba/"
+
+# training
+train : False
+posthoc : False
+alpha : 0
+train_samples: 1
+prior_precision: 1
+learning_rate: 1e-4
+
+# test
+ood : False
+test_samples: 100
+
+# data
+dataset : "celeba"
+ood_dataset : "celeba"
+batch_size: 96
+    
+# model
+pretrained : False
+no_conv : False
+latent_size : 64
+
+# hessian
+backend : "layer" 
+approximation : "mix"
+hessian_memory_factor: 0.999
+one_hessian_per_sampling: False
+update_hessian: True
+hessian_scale: 1

@@ -80,6 +80,8 @@ class PosthocLaplace:
             else:
                 hessian += h_s
 
+        self.hessian = hessian
+
     def optimize_precision(self):
         mu_q = parameters_to_vector(self.net.parameters())
         self.prior_prec = optimize_prior_precision(mu_q, self.hessian, torch.tensor(1))

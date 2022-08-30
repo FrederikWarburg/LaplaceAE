@@ -506,7 +506,7 @@ def fit_lae(config):
             if "approximation" not in n and "backend" not in n
         ]
     )
-    exp_name = f"{basename}/{exp_name}"
+    exp_name = f"{basename}/{config['version']}{exp_name}"
 
     path = f"../weights/{config['dataset']}/ae_[use_var_dec=False]/{exp_name}"
     encoder.load_state_dict(torch.load(f"{path}/encoder.pth"))
@@ -557,6 +557,7 @@ if __name__ == "__main__":
 
     print(json.dumps(config, indent=4))
     config["exp_name"] = create_exp_name(config)
+    config["version"] = "" if args.version == -1 else args.version
 
     # train or load auto encoder
     if config["train"] and not config["posthoc"]:

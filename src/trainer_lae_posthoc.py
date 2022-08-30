@@ -18,7 +18,7 @@ import json
 from utils import create_exp_name, compute_typicality_score
 
 sys.path.append("../Laplace")
-from laplace.laplace import Laplace
+from laplace2.laplace2 import Laplace
 
 # from laplace import Laplace
 from data import get_data, generate_latent_grid
@@ -161,6 +161,9 @@ def test_lae_decoder(config):
 
     train_loader, val_loader = get_data(config["dataset"], config["batch_size"])
 
+    # create figures
+    os.makedirs(f"../figures/{path}", exist_ok=True)
+
     x, labels, z, _, x_rec_mu, x_rec_sigma, mse, likelihood = inference_on_dataset(
         la, encoder, val_loader, latent_dim, device
     )
@@ -171,9 +174,6 @@ def test_lae_decoder(config):
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
         la, encoder, z, latent_dim, device
     )
-
-    # create figures
-    os.makedirs(f"../figures/{path}", exist_ok=True)
 
     if config["dataset"] == "swissrole":
         labels = None
@@ -244,6 +244,9 @@ def test_lae_encoder_decoder(config):
 
     train_loader, val_loader = get_data(config["dataset"], config["batch_size"])
 
+    # create figures
+    os.makedirs(f"../figures/{path}", exist_ok=True)
+
     (
         x,
         labels,
@@ -261,9 +264,6 @@ def test_lae_encoder_decoder(config):
     xg_mesh, yg_mesh, sigma_vector, n_points_axis = inference_on_latent_grid(
         deepcopy(la), None, z_mu, latent_dim, device
     )
-
-    # create figures
-    os.makedirs(f"../figures/{path}", exist_ok=True)
 
     if config["dataset"] == "swissrole":
         labels = None
